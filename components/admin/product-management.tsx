@@ -403,7 +403,7 @@ export function ProductManagement() {
     <Card className="w-full">
       <CardHeader className="flex flex-row items-center justify-between px-6">
         <CardTitle className="text-center flex-1">Product Management</CardTitle>
-        <Button onClick={() => setIsDialogOpen(true)} className="ml-auto">
+        <Button variant="default" onClick={() => setIsDialogOpen(true)} className="ml-auto">
           <Plus className="h-4 w-4 mr-2" />
           Add Product
         </Button>
@@ -472,19 +472,10 @@ export function ProductManagement() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleEdit(beer)}
-                      >
+                      <Button variant="outline" size="sm" onClick={() => handleEdit(beer)}>
                         <Edit className="h-4 w-4" />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDeleteProduct(beer.id, beer.name)}
-                        className="text-destructive hover:text-destructive"
-                      >
+                      <Button variant="destructive" size="sm" onClick={() => handleDeleteProduct(beer.id, beer.name)}>
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
@@ -496,7 +487,7 @@ export function ProductManagement() {
         </div>
 
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogContent className="max-w-2xl mx-auto">
+    <DialogContent className="max-w-2xl mx-auto bg-white text-black dark:bg-black dark:text-white">
             <DialogHeader className="text-center">
               <DialogTitle>
                 {editingBeer ? "Edit Product" : "Add New Product"}
@@ -698,7 +689,7 @@ export function ProductManagement() {
 
             <DialogFooter className="justify-center space-x-4">
               <Button
-                variant="outline"
+                variant="ghost"
                 onClick={() => setIsDialogOpen(false)}
                 disabled={isSaving}
               >

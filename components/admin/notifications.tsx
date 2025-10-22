@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -22,13 +22,13 @@ export function AdminNotifications() {
   useEffect(() => {
     const fetchNotifications = async () => {
       try {
-        const res = await fetch('/api/admin/notifications');
+        const res = await fetch("/api/admin/notifications");
         const json = await res.json();
         if (json.success) {
           setItems(json.data);
         }
       } catch (err) {
-        console.error('Failed to load notifications', err);
+        console.error("Failed to load notifications", err);
       } finally {
         setLoading(false);
       }
@@ -40,7 +40,9 @@ export function AdminNotifications() {
   if (loading) {
     return (
       <Card>
-        <CardContent className="py-4 text-center text-muted-foreground">Loading notifications...</CardContent>
+        <CardContent className="py-4 text-center text-muted-foreground">
+          Loading notifications...
+        </CardContent>
       </Card>
     );
   }
@@ -67,15 +69,22 @@ export function AdminNotifications() {
             <div key={n.id} className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-sm font-medium">{n.message}</p>
-                <p className="text-xs text-muted-foreground">{new Date(n.createdAt).toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">
+                  {new Date(n.createdAt).toLocaleString()}
+                </p>
                 {n.orderId && (
-                  <Link href={`/orders/${n.orderId}`} className="text-xs text-primary underline">
+                  <Link
+                    href={`/orders/${n.orderId}`}
+                    className="text-xs text-primary underline"
+                  >
                     View order
                   </Link>
                 )}
               </div>
               <div>
-                <Badge variant={n.read ? "outline" : "secondary"}>{n.read ? "Read" : "New"}</Badge>
+                <Badge variant={n.read ? "outline" : "secondary"}>
+                  {n.read ? "Read" : "New"}
+                </Badge>
               </div>
             </div>
           ))}

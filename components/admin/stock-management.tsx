@@ -49,7 +49,7 @@ export function StockManagement() {
         return
       }
 
-      const formattedBeers = data.map((beer) => ({
+      const formattedBeers = data.map((beer: any) => ({
         id: beer.id,
         name: beer.name,
         brand: beer.name.split(" ")[0],
@@ -153,7 +153,7 @@ export function StockManagement() {
                     )}
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="sm" onClick={() => handleEdit(beer)}>
+                    <Button variant="secondary" size="sm" onClick={() => handleEdit(beer)}>
                       <Edit className="h-4 w-4" />
                     </Button>
                   </TableCell>
@@ -164,7 +164,7 @@ export function StockManagement() {
         </div>
 
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogContent>
+    <DialogContent className="max-w-2xl mx-auto bg-white text-black dark:bg-black dark:text-white">
             <DialogHeader>
               <DialogTitle>Edit Stock</DialogTitle>
               <DialogDescription>Update the stock and price for {editingBeer?.name}</DialogDescription>
@@ -193,7 +193,7 @@ export function StockManagement() {
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSaving}>
+              <Button variant="ghost" onClick={() => setIsDialogOpen(false)} disabled={isSaving}>
                 Cancel
               </Button>
               <Button onClick={handleSave} disabled={isSaving}>

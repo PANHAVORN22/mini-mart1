@@ -145,7 +145,7 @@ export function UserManagement() {
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
                       <Button
-                        variant="ghost"
+                        variant="default"
                         size="sm"
                         onClick={() =>
                           handleSetRole(
@@ -163,7 +163,7 @@ export function UserManagement() {
                       </Button>
 
                       <Button
-                        variant="outline"
+                        variant="secondary"
                         size="sm"
                         onClick={() =>
                           handleTogglePremium(user.id, user.isPremium)
