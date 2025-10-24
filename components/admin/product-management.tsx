@@ -42,6 +42,7 @@ import {
 import { toast } from "sonner";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import imageCompression from "browser-image-compression";
+import { Progress } from "@/components/ui/progress";
 
 interface Beer {
   id: string;
@@ -90,6 +91,7 @@ export function ProductManagement() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [newBeer, setNewBeer] = useState<NewBeerForm>({
     name: "",
@@ -152,32 +154,40 @@ export function ProductManagement() {
   };
 
   const uploadImage = async (file: File): Promise<string> => {
-    const supabase = getSupabaseBrowserClient();
-
-    // Compress the image first
+    // Use presigned upload URL from the server and rely on XHR progress events
     const compressedFile = await compressImage(file);
 
-    const fileName = `beer-${Date.now()}-${Math.random()
-      .toString(36)
-      .substring(7)}.jpg`;
-    const { data, error } = await supabase.storage
-      .from("beer-images")
-      .upload(fileName, compressedFile, {
-        cacheControl: "3600",
-        upsert: false,
-      });
+    // POST the file to our server route which will upload to Supabase using the service role key
+    return await new Promise<string>((resolve, reject) => {
+      const formData = new FormData();
+      formData.append("file", compressedFile, `beer-${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`);
+      // include filename explicitly
+      formData.append("filename", `beer-${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`);
 
-    if (error) {
-      console.error("Upload error:", error);
-      throw new Error("Failed to upload image");
-    }
-
-    // Get public URL
-    const { data: urlData } = supabase.storage
-      .from("beer-images")
-      .getPublicUrl(fileName);
-
-    return urlData.publicUrl;
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/admin/upload-url");
+      xhr.upload.onprogress = (ev) => {
+        if (ev.lengthComputable) {
+          const pct = Math.round((ev.loaded / ev.total) * 100);
+          setUploadProgress(pct);
+        }
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const json = JSON.parse(xhr.responseText || "{}");
+            if (json?.publicUrl) resolve(json.publicUrl);
+            else reject(new Error("Upload succeeded but server did not return publicUrl"));
+          } catch (err) {
+            reject(new Error("Invalid JSON response from upload endpoint"));
+          }
+        } else {
+          reject(new Error(`Upload failed status ${xhr.status} - ${xhr.responseText}`));
+        }
+      };
+      xhr.onerror = () => reject(new Error("Upload network error"));
+      xhr.send(formData);
+    });
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -222,32 +232,34 @@ export function ProductManagement() {
 
     setIsSaving(true);
     setIsUploading(true);
+    // prepare progress indicator (actual progress provided by XHR)
+    setUploadProgress(0);
 
     try {
-      const supabase = getSupabaseBrowserClient();
-
       // Upload image first
       const imageUrl = await uploadImage(newBeer.image);
+      // finish progress (uploadImage sets 100 when done)
 
-      // Create beer record
-      const { data, error } = await supabase
-        .from("beers")
-        .insert({
+      // Call server API to create beer
+      const res = await fetch("/api/admin/beers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           name: newBeer.name,
           type: newBeer.type,
           description: newBeer.description,
-          price: parseFloat(newBeer.price),
-          alcohol_content: parseFloat(newBeer.alcohol_content) || null,
-          volume: parseInt(newBeer.volume),
-          stock: parseInt(newBeer.stock),
+          price: newBeer.price,
+          alcohol_content: newBeer.alcohol_content,
+          volume: newBeer.volume,
+          stock: newBeer.stock,
           image_url: imageUrl,
           is_premium: newBeer.is_premium,
-        })
-        .select()
-        .single();
+        }),
+      });
 
-      if (error) {
-        console.error("Error creating beer:", error);
+      const json = await res.json();
+      if (!json.success) {
+        console.error("Create beer API error:", json.error);
         toast.error("Failed to create product");
         return;
       }
@@ -279,6 +291,8 @@ export function ProductManagement() {
     } finally {
       setIsSaving(false);
       setIsUploading(false);
+      // reset progress after a short delay
+      setTimeout(() => setUploadProgress(0), 600);
     }
   };
 
@@ -311,37 +325,39 @@ export function ProductManagement() {
       return;
     }
 
-    setIsSaving(true);
-
     try {
-      const supabase = getSupabaseBrowserClient();
-
       let imageUrl = editingBeer.image_url;
 
       // Upload new image if provided
       if (newBeer.image) {
         setIsUploading(true);
+        setUploadProgress(0);
         imageUrl = await uploadImage(newBeer.image);
       }
 
-      // Update beer record
-      const { error } = await supabase
-        .from("beers")
-        .update({
-          name: newBeer.name,
-          type: newBeer.type,
-          description: newBeer.description,
-          price: parseFloat(newBeer.price),
-          alcohol_content: parseFloat(newBeer.alcohol_content) || null,
-          volume: parseInt(newBeer.volume),
-          stock: parseInt(newBeer.stock),
-          image_url: imageUrl,
-          is_premium: newBeer.is_premium,
-        })
-        .eq("id", editingBeer.id);
+      // Call server API to update beer
+      const res = await fetch("/api/admin/beers", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editingBeer.id,
+          data: {
+            name: newBeer.name,
+            type: newBeer.type,
+            description: newBeer.description,
+            price: newBeer.price,
+            alcohol_content: newBeer.alcohol_content,
+            volume: newBeer.volume,
+            stock: newBeer.stock,
+            image_url: imageUrl,
+            is_premium: newBeer.is_premium,
+          },
+        }),
+      });
 
-      if (error) {
-        console.error("Error updating beer:", error);
+      const json = await res.json();
+      if (!json.success) {
+        console.error("Update beer API error:", json.error);
         toast.error("Failed to update product");
         return;
       }
@@ -359,6 +375,7 @@ export function ProductManagement() {
     } finally {
       setIsSaving(false);
       setIsUploading(false);
+      setTimeout(() => setUploadProgress(0), 600);
     }
   };
 
@@ -401,10 +418,10 @@ export function ProductManagement() {
 
   return (
     <Card className="w-full">
-      <CardHeader className="flex flex-row items-center justify-between px-6">
-        <CardTitle className="text-center flex-1">Product Management</CardTitle>
-        <Button variant="default" onClick={() => setIsDialogOpen(true)} className="ml-auto">
-          <Plus className="h-4 w-4 mr-2" />
+      <CardHeader className="flex flex-col items-center gap-3 px-6">
+        <CardTitle className="text-center">Product Management</CardTitle>
+        <Button variant="default" onClick={() => setIsDialogOpen(true)}>
+          <Plus className="  h-4 w-4 mr-2" />
           Add Product
         </Button>
       </CardHeader>
@@ -487,7 +504,23 @@ export function ProductManagement() {
         </div>
 
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-    <DialogContent className="max-w-2xl mx-auto bg-white text-black dark:bg-black dark:text-white">
+        <DialogContent className="text-center max-w-2xl mx-auto bg-white text-black dark:bg-black dark:text-white">
+          {(isUploading || isSaving) && (
+            <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-white/80 dark:bg-black/80 p-4">
+              <div className="flex items-center gap-3">
+                <svg className="animate-spin h-5 w-5 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                </svg>
+                <div className="w-full max-w-md">
+                  <Progress value={uploadProgress} indicatorClassName="bg-black dark:bg-white" />
+                </div>
+              </div>
+              <p className="mt-3 text-sm text-muted-foreground">            
+                {isUploading ? `Uploading image... ${uploadProgress}%` : isSaving ? "Saving..." : ""}
+              </p>
+            </div>
+          )}
             <DialogHeader className="text-center">
               <DialogTitle>
                 {editingBeer ? "Edit Product" : "Add New Product"}
