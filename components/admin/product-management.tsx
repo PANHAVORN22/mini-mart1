@@ -160,9 +160,16 @@ export function ProductManagement() {
     // POST the file to our server route which will upload to Supabase using the service role key
     return await new Promise<string>((resolve, reject) => {
       const formData = new FormData();
-      formData.append("file", compressedFile, `beer-${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`);
+      formData.append(
+        "file",
+        compressedFile,
+        `beer-${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`
+      );
       // include filename explicitly
-      formData.append("filename", `beer-${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`);
+      formData.append(
+        "filename",
+        `beer-${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`
+      );
 
       const xhr = new XMLHttpRequest();
       xhr.open("POST", "/api/admin/upload-url");
@@ -177,12 +184,21 @@ export function ProductManagement() {
           try {
             const json = JSON.parse(xhr.responseText || "{}");
             if (json?.publicUrl) resolve(json.publicUrl);
-            else reject(new Error("Upload succeeded but server did not return publicUrl"));
+            else
+              reject(
+                new Error(
+                  "Upload succeeded but server did not return publicUrl"
+                )
+              );
           } catch (err) {
             reject(new Error("Invalid JSON response from upload endpoint"));
           }
         } else {
-          reject(new Error(`Upload failed status ${xhr.status} - ${xhr.responseText}`));
+          reject(
+            new Error(
+              `Upload failed status ${xhr.status} - ${xhr.responseText}`
+            )
+          );
         }
       };
       xhr.onerror = () => reject(new Error("Upload network error"));
@@ -257,9 +273,25 @@ export function ProductManagement() {
         }),
       });
 
-      const json = await res.json();
-      if (!json.success) {
-        console.error("Create beer API error:", json.error);
+      let json: any = null;
+      if (!res.ok) {
+        // Non-OK response: try to capture body for debugging
+        const text = await res.text().catch(() => "");
+        console.error("Create beer API error: status", res.status, "body:", text);
+        toast.error("Failed to create product");
+        return;
+      }
+
+      try {
+        json = await res.json();
+      } catch (err) {
+        console.error("Create beer: failed to parse JSON response", err);
+        toast.error("Failed to create product");
+        return;
+      }
+
+      if (!json?.success) {
+        console.error("Create beer API error:", json?.error ?? json);
         toast.error("Failed to create product");
         return;
       }
@@ -355,9 +387,22 @@ export function ProductManagement() {
         }),
       });
 
-      const json = await res.json();
-      if (!json.success) {
-        console.error("Update beer API error:", json.error);
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        console.error("Update beer API error: status", res.status, "body:", text);
+        toast.error("Failed to update product");
+        return;
+      }
+
+      try {
+        const json = await res.json();
+        if (!json?.success) {
+          console.error("Update beer API error:", json?.error ?? json);
+          toast.error("Failed to update product");
+          return;
+        }
+      } catch (err) {
+        console.error("Update beer: failed to parse JSON response", err);
         toast.error("Failed to update product");
         return;
       }
@@ -421,7 +466,7 @@ export function ProductManagement() {
       <CardHeader className="flex flex-col items-center gap-3 px-6">
         <CardTitle className="text-center">Product Management</CardTitle>
         <Button variant="default" onClick={() => setIsDialogOpen(true)}>
-          <Plus className="  h-4 w-4 mr-2" />
+          <Plus className="h-4 w-4 mr-2" />
           Add Product
         </Button>
       </CardHeader>
@@ -489,10 +534,18 @@ export function ProductManagement() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <Button variant="outline" size="sm" onClick={() => handleEdit(beer)}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleEdit(beer)}
+                      >
                         <Edit className="h-4 w-4" />
                       </Button>
-                      <Button variant="destructive" size="sm" onClick={() => handleDeleteProduct(beer.id, beer.name)}>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleDeleteProduct(beer.id, beer.name)}
+                      >
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
@@ -504,23 +557,46 @@ export function ProductManagement() {
         </div>
 
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="text-center max-w-2xl mx-auto bg-white text-black dark:bg-black dark:text-white">
-          {(isUploading || isSaving) && (
-            <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-white/80 dark:bg-black/80 p-4">
-              <div className="flex items-center gap-3">
-                <svg className="animate-spin h-5 w-5 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
-                </svg>
-                <div className="w-full max-w-md">
-                  <Progress value={uploadProgress} indicatorClassName="bg-black dark:bg-white" />
+          <DialogContent className="text-center max-w-2xl mx-auto bg-white text-black dark:bg-black dark:text-white">
+            {(isUploading || isSaving) && (
+              <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-white/80 dark:bg-black/80 p-4">
+                <div className="flex items-center gap-3">
+                  <svg
+                    className="animate-spin h-5 w-5 text-muted-foreground"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                    ></path>
+                  </svg>
+                  <div className="w-full max-w-md">
+                    <Progress
+                      value={uploadProgress}
+                      indicatorClassName="bg-black dark:bg-white"
+                    />
+                  </div>
                 </div>
+                <p className="mt-3 text-sm text-muted-foreground">
+                  {isUploading
+                    ? `Uploading image... ${uploadProgress}%`
+                    : isSaving
+                    ? "Saving..."
+                    : ""}
+                </p>
               </div>
-              <p className="mt-3 text-sm text-muted-foreground">            
-                {isUploading ? `Uploading image... ${uploadProgress}%` : isSaving ? "Saving..." : ""}
-              </p>
-            </div>
-          )}
+            )}
             <DialogHeader className="text-center">
               <DialogTitle>
                 {editingBeer ? "Edit Product" : "Add New Product"}

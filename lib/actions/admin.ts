@@ -45,12 +45,33 @@ export async function updateBeerStock(
   stock: number,
   price: number
 ) {
+  // Ensure caller is authenticated and is an admin, then use the service role
+  // client to perform the update (bypass RLS and avoid recursion).
   const supabase = await getSupabaseServerClient();
+  const service = getSupabaseServiceRoleClient();
 
-  const { error } = await supabase
-    .from("beers")
-    .update({ stock, price })
-    .eq("id", beerId);
+  const {
+    data: { user: caller },
+  } = await supabase.auth.getUser();
+
+  if (!caller) return { success: false, error: "Not authenticated" };
+
+  const { data: callerProfile, error: profileErr } = await service
+    .from("users")
+    .select("role")
+    .eq("id", caller.id)
+    .maybeSingle();
+
+  if (profileErr) {
+    console.error("Error fetching caller profile:", profileErr);
+    return { success: false, error: "Failed to verify caller" };
+  }
+
+  if (!callerProfile || callerProfile.role !== "admin") {
+    return { success: false, error: "Forbidden: admin only" };
+  }
+
+  const { error } = await service.from("beers").update({ stock, price }).eq("id", beerId);
 
   if (error) {
     console.error("Error updating beer stock:", error);
@@ -194,13 +215,36 @@ export async function createBeer(beerData: {
   image_url?: string;
   is_premium?: boolean;
 }) {
+  // Only allow admins to create beers. Use the session client to get the
+  // caller, then use the service role client to verify role and perform
+  // the insert (bypass RLS and avoid policy recursion).
   const supabase = await getSupabaseServerClient();
+  const service = getSupabaseServiceRoleClient();
 
-  const { data, error } = await supabase
-    .from("beers")
-    .insert(beerData)
-    .select()
-    .single();
+  const {
+    data: { user: caller },
+  } = await supabase.auth.getUser();
+
+  if (!caller) {
+    return { success: false, error: "Not authenticated" };
+  }
+
+  const { data: callerProfile, error: profileErr } = await service
+    .from("users")
+    .select("role")
+    .eq("id", caller.id)
+    .maybeSingle();
+
+  if (profileErr) {
+    console.error("Error fetching caller profile:", profileErr);
+    return { success: false, error: "Failed to verify caller" };
+  }
+
+  if (!callerProfile || callerProfile.role !== "admin") {
+    return { success: false, error: "Forbidden: admin only" };
+  }
+
+  const { data, error } = await service.from("beers").insert(beerData).select().single();
 
   if (error) {
     console.error("Error creating beer:", error);
@@ -226,12 +270,32 @@ export async function updateBeer(
     is_premium?: boolean;
   }
 ) {
+  // Only allow admins to update beers. Verify caller and use service client
   const supabase = await getSupabaseServerClient();
+  const service = getSupabaseServiceRoleClient();
 
-  const { error } = await supabase
-    .from("beers")
-    .update(beerData)
-    .eq("id", beerId);
+  const {
+    data: { user: caller },
+  } = await supabase.auth.getUser();
+
+  if (!caller) return { success: false, error: "Not authenticated" };
+
+  const { data: callerProfile, error: profileErr } = await service
+    .from("users")
+    .select("role")
+    .eq("id", caller.id)
+    .maybeSingle();
+
+  if (profileErr) {
+    console.error("Error fetching caller profile:", profileErr);
+    return { success: false, error: "Failed to verify caller" };
+  }
+
+  if (!callerProfile || callerProfile.role !== "admin") {
+    return { success: false, error: "Forbidden: admin only" };
+  }
+
+  const { error } = await service.from("beers").update(beerData).eq("id", beerId);
 
   if (error) {
     console.error("Error updating beer:", error);
@@ -245,8 +309,30 @@ export async function updateBeer(
 
 export async function deleteBeer(beerId: string) {
   const supabase = await getSupabaseServerClient();
+  const service = getSupabaseServiceRoleClient();
 
-  const { error } = await supabase.from("beers").delete().eq("id", beerId);
+  const {
+    data: { user: caller },
+  } = await supabase.auth.getUser();
+
+  if (!caller) return { success: false, error: "Not authenticated" };
+
+  const { data: callerProfile, error: profileErr } = await service
+    .from("users")
+    .select("role")
+    .eq("id", caller.id)
+    .maybeSingle();
+
+  if (profileErr) {
+    console.error("Error fetching caller profile:", profileErr);
+    return { success: false, error: "Failed to verify caller" };
+  }
+
+  if (!callerProfile || callerProfile.role !== "admin") {
+    return { success: false, error: "Forbidden: admin only" };
+  }
+
+  const { error } = await service.from("beers").delete().eq("id", beerId);
 
   if (error) {
     console.error("Error deleting beer:", error);

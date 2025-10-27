@@ -1,10 +1,20 @@
-import { NextResponse } from 'next/server'
-import { createBeer, updateBeer } from '@/lib/actions/admin'
+import { NextResponse } from "next/server";
+import { createBeer, updateBeer } from "@/lib/actions/admin";
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json()
-    const { name, type, description, price, alcohol_content, volume, stock, image_url, is_premium } = body
+    const body = await req.json();
+    const {
+      name,
+      type,
+      description,
+      price,
+      alcohol_content,
+      volume,
+      stock,
+      image_url,
+      is_premium,
+    } = body;
 
     const result = await createBeer({
       name,
@@ -16,23 +26,29 @@ export async function POST(req: Request) {
       stock: Number(stock),
       image_url,
       is_premium: Boolean(is_premium),
-    })
+    });
 
     if (!result.success) {
-      return NextResponse.json({ success: false, error: result.error }, { status: 500 })
+      return NextResponse.json(
+        { success: false, error: result.error },
+        { status: 500 }
+      );
     }
 
-    return NextResponse.json({ success: true, beer: result.beer })
+    return NextResponse.json({ success: true, beer: result.beer });
   } catch (err) {
-    console.error('Create beer failed:', err)
-    return NextResponse.json({ success: false, error: 'Create beer failed' }, { status: 500 })
+    console.error("Create beer failed:", err);
+    return NextResponse.json(
+      { success: false, error: "Create beer failed" },
+      { status: 500 }
+    );
   }
 }
 
 export async function PUT(req: Request) {
   try {
-    const body = await req.json()
-    const { id, data } = body
+    const body = await req.json();
+    const { id, data } = body;
 
     const result = await updateBeer(id, {
       ...data,
@@ -43,16 +59,23 @@ export async function PUT(req: Request) {
           : undefined,
       volume: data.volume !== undefined ? Number(data.volume) : undefined,
       stock: data.stock !== undefined ? Number(data.stock) : undefined,
-      is_premium: data.is_premium !== undefined ? Boolean(data.is_premium) : undefined,
-    })
+      is_premium:
+        data.is_premium !== undefined ? Boolean(data.is_premium) : undefined,
+    });
 
     if (!result.success) {
-      return NextResponse.json({ success: false, error: result.error }, { status: 500 })
+      return NextResponse.json(
+        { success: false, error: result.error },
+        { status: 500 }
+      );
     }
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true });
   } catch (err) {
-    console.error('Update beer failed:', err)
-    return NextResponse.json({ success: false, error: 'Update beer failed' }, { status: 500 })
+    console.error("Update beer failed:", err);
+    return NextResponse.json(
+      { success: false, error: "Update beer failed" },
+      { status: 500 }
+    );
   }
 }
