@@ -30,7 +30,9 @@ if (!SUPABASE_URL) missingEnv.push("SUPABASE_URL");
 if (!SUPABASE_SERVICE_ROLE_KEY) missingEnv.push("SUPABASE_SERVICE_ROLE_KEY");
 
 if (missingEnv.length > 0) {
-  console.warn(`/api/admin/upload-url missing env vars: ${missingEnv.join(", ")}`);
+  console.warn(
+    `/api/admin/upload-url missing env vars: ${missingEnv.join(", ")}`
+  );
 }
 
 import { getSupabaseServerClient } from "@/lib/supabase/server";
@@ -49,7 +51,7 @@ export async function POST(req: Request) {
       });
     }
 
-  // Admin guard: ensure caller is authenticated and has role 'admin'
+    // Admin guard: ensure caller is authenticated and has role 'admin'
     const supabaseServer = await getSupabaseServerClient();
     const {
       data: { user: caller },
@@ -57,7 +59,10 @@ export async function POST(req: Request) {
 
     // Log caller id for debugging (do NOT log tokens or keys)
     try {
-      console.log("/api/admin/upload-url called by user id:", caller?.id ?? "<none>");
+      console.log(
+        "/api/admin/upload-url called by user id:",
+        caller?.id ?? "<none>"
+      );
     } catch {}
 
     if (!caller) {
@@ -90,7 +95,10 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     if (profileErr) {
-      console.error("Error fetching caller profile for upload guard:", profileErr);
+      console.error(
+        "Error fetching caller profile for upload guard:",
+        profileErr
+      );
       const body: any = { error: "Failed to verify caller" };
       if (DEV_MODE) body.debug = { profileErr };
       return new Response(JSON.stringify(body), {
@@ -103,12 +111,24 @@ export async function POST(req: Request) {
     // trigger didn't populate it), create a minimal profile record using the
     // admin client. This helps development and first-time signups.
     if (!callerProfile) {
-      console.log("No profile found for user, creating one via admin client:", caller.id);
-      const inferredRole = (caller.user_metadata as any)?.role === "admin" ? "admin" : "customer";
-      const inferredName = (caller.user_metadata as any)?.full_name || caller.user_metadata?.full_name || null;
+      console.log(
+        "No profile found for user, creating one via admin client:",
+        caller.id
+      );
+      const inferredRole =
+        (caller.user_metadata as any)?.role === "admin" ? "admin" : "customer";
+      const inferredName =
+        (caller.user_metadata as any)?.full_name ||
+        caller.user_metadata?.full_name ||
+        null;
       const { data: inserted, error: insertErr } = await supabaseAdmin
         .from("users")
-        .insert({ id: caller.id, email: caller.email, full_name: inferredName, role: inferredRole })
+        .insert({
+          id: caller.id,
+          email: caller.email,
+          full_name: inferredName,
+          role: inferredRole,
+        })
         .select("role, full_name, email")
         .maybeSingle();
 
@@ -126,7 +146,10 @@ export async function POST(req: Request) {
     }
 
     // Log caller profile role check
-    console.log("/api/admin/upload-url caller profile:", callerProfile?.role ?? "<no-profile>");
+    console.log(
+      "/api/admin/upload-url caller profile:",
+      callerProfile?.role ?? "<no-profile>"
+    );
 
     if (!callerProfile || callerProfile.role !== "admin") {
       const body: any = { error: "Forbidden: admin only" };
@@ -193,4 +216,3 @@ export async function POST(req: Request) {
     });
   }
 }
-
