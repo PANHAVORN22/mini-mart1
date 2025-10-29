@@ -13,12 +13,13 @@ import {
 import { useCartStore } from "@/lib/cart-store";
 import { Minus, Plus, Trash2, ShoppingBag } from "lucide-react";
 import Link from "next/link";
-import { useAuthStore } from "@/lib/auth-store";
+import { useUser } from "@/lib/hooks/use-user";
 
 export default function CartPage() {
   const { items, removeItem, updateQuantity, getTotal, clearCart } =
     useCartStore();
-  const { isAuthenticated } = useAuthStore();
+  // Prefer the real authentication state from Supabase-backed `useUser`.
+  const { isAuthenticated, isLoading: authLoading } = useUser();
   const total = getTotal();
 
   if (items.length === 0) {
@@ -197,9 +198,14 @@ export default function CartPage() {
                   {isAuthenticated ? (
                     <Link href="/checkout" className="w-full">
                       <Button className="w-full" size="lg">
-                        Proceed to Checkout
+                        Online Payment
                       </Button>
                     </Link>
+                  ) : authLoading ? (
+                    // While we're checking the Supabase session, don't redirect to login.
+                    <Button className="w-full" size="lg" disabled>
+                      Checking session...
+                    </Button>
                   ) : (
                     <Link href="/login?redirect=/checkout" className="w-full">
                       <Button className="w-full" size="lg">

@@ -70,8 +70,8 @@ export default function CheckoutPage() {
 
       if (result.success) {
         clearCart();
-        toast.success("Order placed successfully!", {
-          description: `Your order has been confirmed`,
+        toast.success("Payment successful!", {
+          description: `Your payment was successful and your order has been placed. Admin has been notified.`,
         });
         router.push(
           `/order-confirmation?orderId=${result.orderId}&amount=${total.toFixed(
@@ -288,11 +288,11 @@ export default function CheckoutPage() {
                       size="lg"
                       disabled={isProcessing}
                     >
-                      {isProcessing ? "Processing..." : "Proceed to Payment"}
+                      {isProcessing ? "Processing..." : "Online Payment"}
                     </Button>
 
                     <p className="text-xs text-center text-muted-foreground">
-                      You will be redirected to ABA Bank payment
+                      Click "Online Payment" to complete the payment. You will see a confirmation once payment succeeds.
                     </p>
                   </CardContent>
                 </Card>

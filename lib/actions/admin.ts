@@ -71,7 +71,10 @@ export async function updateBeerStock(
     return { success: false, error: "Forbidden: admin only" };
   }
 
-  const { error } = await service.from("beers").update({ stock, price }).eq("id", beerId);
+  const { error } = await service
+    .from("beers")
+    .update({ stock, price })
+    .eq("id", beerId);
 
   if (error) {
     console.error("Error updating beer stock:", error);
@@ -244,7 +247,11 @@ export async function createBeer(beerData: {
     return { success: false, error: "Forbidden: admin only" };
   }
 
-  const { data, error } = await service.from("beers").insert(beerData).select().single();
+  const { data, error } = await service
+    .from("beers")
+    .insert(beerData)
+    .select()
+    .single();
 
   if (error) {
     console.error("Error creating beer:", error);
@@ -295,7 +302,10 @@ export async function updateBeer(
     return { success: false, error: "Forbidden: admin only" };
   }
 
-  const { error } = await service.from("beers").update(beerData).eq("id", beerId);
+  const { error } = await service
+    .from("beers")
+    .update(beerData)
+    .eq("id", beerId);
 
   if (error) {
     console.error("Error updating beer:", error);

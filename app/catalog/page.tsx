@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { BeerCard } from "@/components/beer-card";
+import { Button } from "@/components/ui/button";
+import { ArrowLeft, ArrowRight } from "lucide-react";
 import { BeerFilters } from "@/components/beer-filters";
 import { useUser } from "@/lib/hooks/use-user";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -47,7 +49,7 @@ export default function CatalogPage() {
         return;
       }
 
-      const formattedBeers = data.map((beer) => ({
+      const formattedBeers = data.map((beer: any) => ({
         id: beer.id,
         name: beer.name,
         brand: beer.name.split(" ")[0],
@@ -106,6 +108,47 @@ export default function CatalogPage() {
     ...Array.from(new Set(beers.map((beer) => beer.type))),
   ];
 
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [canScrollPrev, setCanScrollPrev] = useState(false);
+  const [canScrollNext, setCanScrollNext] = useState(false);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+
+  const getItemWidth = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return 0;
+    const first = el.querySelector("[data-item]") as HTMLElement | null;
+    if (first) return first.clientWidth;
+    return Math.floor((el.clientWidth || 0) / 3);
+  }, []);
+
+  const updateScrollButtons = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const item = getItemWidth();
+    const visible = item ? Math.max(1, Math.floor(el.clientWidth / item)) : 1;
+    const pages = item ? Math.ceil(el.scrollWidth / (item * visible)) : 1;
+    const page = item ? Math.round(el.scrollLeft / (item * visible)) : 0;
+
+    setCanScrollPrev(el.scrollLeft > 0);
+    setCanScrollNext(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+    setTotalPages(pages);
+    setCurrentPage(Math.min(Math.max(0, page), Math.max(0, pages - 1)));
+  }, [getItemWidth]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    updateScrollButtons();
+    const onScroll = () => updateScrollButtons();
+    window.addEventListener("resize", updateScrollButtons);
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("resize", updateScrollButtons);
+      el.removeEventListener("scroll", onScroll);
+    };
+  }, [updateScrollButtons]);
+
   if (isLoading) {
     return (
       <>
@@ -117,7 +160,6 @@ export default function CatalogPage() {
       </>
     );
   }
-
   return (
     <>
       <Header />
@@ -150,7 +192,7 @@ export default function CatalogPage() {
               />
             </aside>
 
-            <div>
+            <section>
               <div className="mb-6 flex items-center justify-between">
                 <p className="text-sm text-muted-foreground">
                   Showing {filteredBeers.length} of {beers.length} beers
@@ -167,13 +209,104 @@ export default function CatalogPage() {
                   </div>
                 </div>
               ) : (
-                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                  {filteredBeers.map((beer) => (
-                    <BeerCard key={beer.id} beer={beer} />
-                  ))}
+                <div className="relative">
+                  <div className="absolute left-2 top-1/2 -translate-y-1/2 z-10">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        const el = scrollRef.current;
+                        if (!el) return;
+                        const item = getItemWidth();
+                        if (!item) return;
+                        const visible = Math.max(
+                          1,
+                          Math.floor(el.clientWidth / item)
+                        );
+                        const pageWidth = item * visible;
+                        el.scrollBy({ left: -pageWidth, behavior: "smooth" });
+                      }}
+                      aria-label="Previous"
+                      disabled={!canScrollPrev}
+                    >
+                      <ArrowLeft />
+                    </Button>
+                  </div>
+
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2 z-10">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        const el = scrollRef.current;
+                        if (!el) return;
+                        const item = getItemWidth();
+                        if (!item) return;
+                        const visible = Math.max(
+                          1,
+                          Math.floor(el.clientWidth / item)
+                        );
+                        const pageWidth = item * visible;
+                        el.scrollBy({ left: pageWidth, behavior: "smooth" });
+                      }}
+                      aria-label="Next"
+                      disabled={!canScrollNext}
+                    >
+                      <ArrowRight />
+                    </Button>
+                  </div>
+
+                  <div className="mt-4">
+                    <div
+                      ref={scrollRef}
+                      className="flex gap-2 overflow-x-auto py-2 scrollbar-none snap-x snap-mandatory"
+                    >
+                      {filteredBeers.map((beer) => (
+                        <div
+                          key={beer.id}
+                          data-item
+                          className="w-full sm:w-1/2 lg:w-1/3 shrink-0 snap-start"
+                        >
+                          <BeerCard beer={beer} compact />
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Page indicators */}
+                    {totalPages > 1 && (
+                      <div className="mt-3 flex items-center justify-center gap-2">
+                        {Array.from({ length: totalPages }).map((_, i) => (
+                          <button
+                            key={i}
+                            onClick={() => {
+                              const el = scrollRef.current;
+                              if (!el) return;
+                              const item = getItemWidth();
+                              if (!item) return;
+                              const visible = Math.max(
+                                1,
+                                Math.floor(el.clientWidth / item)
+                              );
+                              const pageWidth = item * visible;
+                              el.scrollTo({
+                                left: i * pageWidth,
+                                behavior: "smooth",
+                              });
+                            }}
+                            aria-label={`Go to page ${i + 1}`}
+                            className={`h-2 w-2 rounded-full transition-colors ${
+                              i === currentPage
+                                ? "bg-foreground"
+                                : "bg-muted/60"
+                            }`}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
-            </div>
+            </section>
           </div>
         </div>
       </main>

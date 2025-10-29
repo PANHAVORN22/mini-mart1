@@ -277,7 +277,12 @@ export function ProductManagement() {
       if (!res.ok) {
         // Non-OK response: try to capture body for debugging
         const text = await res.text().catch(() => "");
-        console.error("Create beer API error: status", res.status, "body:", text);
+        console.error(
+          "Create beer API error: status",
+          res.status,
+          "body:",
+          text
+        );
         toast.error("Failed to create product");
         return;
       }
@@ -389,7 +394,12 @@ export function ProductManagement() {
 
       if (!res.ok) {
         const text = await res.text().catch(() => "");
-        console.error("Update beer API error: status", res.status, "body:", text);
+        console.error(
+          "Update beer API error: status",
+          res.status,
+          "body:",
+          text
+        );
         toast.error("Failed to update product");
         return;
       }

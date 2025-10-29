@@ -174,7 +174,7 @@ export function StockManagement() {
                 <TableHead>Price</TableHead>
                 <TableHead>Stock</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead className="text-center">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -197,7 +197,7 @@ export function StockManagement() {
                       <Badge variant="default">In Stock</Badge>
                     )}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-center">
                     <Button
                       variant="secondary"
                       size="sm"
@@ -213,7 +213,7 @@ export function StockManagement() {
         </div>
 
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogContent className="relative max-w-2xl mx-auto bg-white text-black dark:bg-black dark:text-white">
+          <DialogContent className="max-w-2xl mx-auto bg-white text-black dark:bg-black dark:text-white">
             {isSaving && (
               <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-white/80 dark:bg-black/80 p-4">
                 <div className="flex items-center gap-3">
