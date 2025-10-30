@@ -43,16 +43,60 @@ export default function OrdersPage() {
 
   useEffect(() => {
     const fetchOrders = async () => {
-      if (user) {
+      if (!user) return;
+
+      setIsLoadingOrders(true);
+
+      const storageKey = `local-orders-${user.id}`;
+      let localOrders: Order[] = [];
+
+      if (typeof window !== "undefined") {
+        try {
+          const stored = window.localStorage.getItem(storageKey);
+          if (stored) {
+            localOrders = JSON.parse(stored) as Order[];
+          }
+        } catch (err) {
+          console.warn("Failed to parse local order cache", err);
+        }
+      }
+
+      try {
         const userOrders = await getUserOrders(user.id);
-        setOrders(userOrders);
+        const existingIds = new Set(userOrders.map((order) => order.id));
+        const filteredLocal = localOrders.filter(
+          (order) => !existingIds.has(order.id)
+        );
+
+        const merged = [...filteredLocal, ...userOrders].sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+
+        setOrders(merged);
+
+        if (
+          typeof window !== "undefined" &&
+          filteredLocal.length !== localOrders.length
+        ) {
+          window.localStorage.setItem(
+            storageKey,
+            JSON.stringify(filteredLocal)
+          );
+        }
+      } catch (err) {
+        console.error("Failed to fetch orders from server:", err);
+        const sortedLocal = localOrders.sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        setOrders(sortedLocal);
+      } finally {
         setIsLoadingOrders(false);
       }
     };
 
-    if (user) {
-      fetchOrders();
-    }
+    fetchOrders();
   }, [user]);
 
   if (isLoading || isLoadingOrders) {

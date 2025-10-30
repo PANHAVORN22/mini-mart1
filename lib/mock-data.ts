@@ -1,4 +1,4 @@
-import type { Beer, User, Order } from "./types"
+import type { Beer, User, Order } from "./types";
 
 export const mockBeers: Beer[] = [
   {
@@ -97,7 +97,7 @@ export const mockBeers: Beer[] = [
     imageUrl: "/porter-beer-bottle.jpg",
     isPremiumOnly: true,
   },
-]
+];
 
 export const mockUser: User = {
   id: "1",
@@ -105,8 +105,8 @@ export const mockUser: User = {
   name: "John Doe",
   role: "customer",
   isPremium: false,
-  createdAt: new Date(),
-}
+  createdAt: new Date().toISOString(),
+};
 
 export const mockAdminUser: User = {
   id: "admin1",
@@ -114,8 +114,8 @@ export const mockAdminUser: User = {
   name: "Admin User",
   role: "admin",
   isPremium: true,
-  createdAt: new Date(),
-}
+  createdAt: new Date().toISOString(),
+};
 
 export const mockOrders: Order[] = [
   {
@@ -127,7 +127,7 @@ export const mockOrders: Order[] = [
     ],
     total: 28.97,
     status: "completed",
-    createdAt: new Date("2025-01-05"),
+    createdAt: new Date("2025-01-05").toISOString(),
   },
   {
     id: "order2",
@@ -135,6 +135,6 @@ export const mockOrders: Order[] = [
     items: [{ beer: mockBeers[3], quantity: 3 }],
     total: 23.97,
     status: "completed",
-    createdAt: new Date("2025-01-08"),
+    createdAt: new Date("2025-01-08").toISOString(),
   },
-]
+];

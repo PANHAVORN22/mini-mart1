@@ -416,8 +416,41 @@ export async function getRoleChanges(limit = 50) {
 
 export async function getNotifications(limit = 50) {
   const supabase = await getSupabaseServerClient();
+  const service = getSupabaseServiceRoleClient();
 
-  const { data, error } = await supabase
+  const {
+    data: { user: caller },
+    error: callerError,
+  } = await supabase.auth.getUser();
+
+  if (callerError) {
+    console.error("Error fetching caller for notifications:", callerError);
+    throw new Error("Failed to resolve caller");
+  }
+
+  if (!caller) {
+    throw new Error("Not authenticated");
+  }
+
+  const { data: callerProfile, error: profileErr } = await service
+    .from("users")
+    .select("role")
+    .eq("id", caller.id)
+    .maybeSingle();
+
+  if (profileErr) {
+    console.error(
+      "Error fetching caller profile for notifications:",
+      profileErr
+    );
+    throw new Error("Failed to verify caller");
+  }
+
+  if (!callerProfile || callerProfile.role !== "admin") {
+    throw new Error("Forbidden");
+  }
+
+  const { data, error } = await service
     .from("notifications")
     .select("*, users(*)")
     .order("created_at", { ascending: false })
@@ -425,7 +458,7 @@ export async function getNotifications(limit = 50) {
 
   if (error) {
     console.error("Error fetching notifications:", error);
-    return [];
+    throw new Error("Failed to fetch notifications");
   }
 
   return (data || []).map((n: any) => ({
@@ -439,4 +472,152 @@ export async function getNotifications(limit = 50) {
     createdAt: n.created_at,
     userName: n.users?.full_name || n.users?.email || "Unknown",
   }));
+}
+
+export async function markNotificationRead(notificationId: string) {
+  const supabase = await getSupabaseServerClient();
+  const service = getSupabaseServiceRoleClient();
+
+  const {
+    data: { user: caller },
+  } = await supabase.auth.getUser();
+
+  if (!caller) return { success: false, error: "Not authenticated" };
+
+  const { data: callerProfile, error: profileErr } = await service
+    .from("users")
+    .select("role")
+    .eq("id", caller.id)
+    .maybeSingle();
+
+  if (profileErr) {
+    console.error("Error fetching caller profile:", profileErr);
+    return { success: false, error: "Failed to verify caller" };
+  }
+
+  if (!callerProfile || callerProfile.role !== "admin") {
+    return { success: false, error: "Forbidden: admin only" };
+  }
+
+  const { error } = await service
+    .from("notifications")
+    .update({ read: true })
+    .eq("id", notificationId);
+
+  if (error) {
+    console.error("Error marking notification read:", error);
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/admin");
+  return { success: true };
+}
+
+export async function updateOrderStatus(orderId: string, status: string) {
+  const supabase = await getSupabaseServerClient();
+  let service: ReturnType<typeof getSupabaseServiceRoleClient> | null = null;
+
+  try {
+    service = getSupabaseServiceRoleClient();
+  } catch (err) {
+    console.warn("Service role client unavailable for updateOrderStatus", err);
+  }
+
+  const {
+    data: { user: caller },
+  } = await supabase.auth.getUser();
+
+  if (!caller) return { success: false, error: "Not authenticated" };
+
+  let callerRole = caller.user_metadata?.role as string | undefined;
+
+  if (service) {
+    const { data: callerProfile, error: profileErr } = await service
+      .from("users")
+      .select("role")
+      .eq("id", caller.id)
+      .maybeSingle();
+
+    if (profileErr) {
+      console.error("Error fetching caller profile (service):", profileErr);
+      return { success: false, error: "Failed to verify caller" };
+    }
+
+    callerRole = callerProfile?.role || callerRole;
+  } else {
+    const { data: callerProfile, error: profileErr } = await supabase
+      .from("users")
+      .select("role")
+      .eq("id", caller.id)
+      .maybeSingle();
+
+    if (profileErr) {
+      console.error("Error fetching caller profile (session):", profileErr);
+      return { success: false, error: "Failed to verify caller" };
+    }
+
+    callerRole = callerProfile?.role || callerRole;
+  }
+
+  if (callerRole !== "admin") {
+    return { success: false, error: "Forbidden: admin only" };
+  }
+
+  let error: any = null;
+
+  if (service) {
+    const { error: serviceErr } = await service
+      .from("orders")
+      .update({ status })
+      .eq("id", orderId);
+
+    if (!serviceErr) {
+      error = null;
+    } else {
+      console.error("Failed to update order via service client:", serviceErr);
+      error = serviceErr;
+    }
+  }
+
+  if (!service || error) {
+    const { error: sessionErr } = await supabase
+      .from("orders")
+      .update({ status })
+      .eq("id", orderId);
+
+    if (sessionErr) {
+      console.error("Failed to update order via session client:", sessionErr);
+      return { success: false, error: sessionErr.message };
+    }
+  }
+
+  // Optional: notify the customer that order status changed
+  try {
+    const client = service ?? supabase;
+
+    const { data: order } = await client
+      .from("orders")
+      .select("id, user_id, total")
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (order) {
+      const message = `Order ${orderId} is now ${status}`;
+      const targetClient = service ?? supabase;
+
+      await targetClient.from("notifications").insert({
+        user_id: order.user_id,
+        order_id: orderId,
+        type: "order_update",
+        message,
+        metadata: { status },
+      });
+    }
+  } catch (e) {
+    console.error("Failed to insert order update notification:", e);
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/orders");
+  return { success: true };
 }

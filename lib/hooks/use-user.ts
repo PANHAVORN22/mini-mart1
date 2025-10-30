@@ -1,6 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type {
+  AuthChangeEvent,
+  RealtimeChannel,
+  Session,
+  User as SupabaseUser,
+} from "@supabase/supabase-js";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export interface UserProfile {
@@ -17,219 +23,161 @@ export function useUser() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const supabase = getSupabaseBrowserClient();
-  const channelRef = useRef<any>(null);
+  const channelRef = useRef<RealtimeChannel | null>(null);
+  const didFinishInitialSession = useRef(false);
 
-  useEffect(() => {
-    // Get initial user
-    const getInitialUser = async () => {
-      const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser();
-
-      if (authUser) {
-        // Fetch profile
-        const { data: profile } = await supabase
-          .from("users")
-          .select("*")
-          .eq("id", authUser.id)
-          .maybeSingle();
-
-        // Ensure a users row exists. Use the users table as the source of truth for role.
-        const metaFullName = authUser.user_metadata?.full_name || "";
-        const metaRole =
-          (authUser.user_metadata?.role as "customer" | "admin" | undefined) ||
-          "customer";
-
-        if (!profile) {
-          // Create profile row if missing using metadata as initial values
-          await supabase.from("users").insert({
-            id: authUser.id,
-            email: authUser.email,
-            full_name: metaFullName,
-            role: metaRole,
-          });
-        }
-
-        // Read (possibly created) profile and use it as canonical
-        const { data: finalProfile } = await supabase
-          .from("users")
-          .select("*")
-          .eq("id", authUser.id)
-          .single();
-
-        setUser({
-          id: authUser.id,
-          email: authUser.email!,
-          name:
-            finalProfile?.full_name || authUser.user_metadata?.full_name || "",
-          // Use the role from the users table (finalProfile) as source of truth
-          role: (finalProfile?.role as "customer" | "admin") || metaRole,
-          isPremium: finalProfile?.is_premium || false,
-          premiumExpiresAt: finalProfile?.premium_expires_at,
-          createdAt: finalProfile?.created_at || authUser.created_at,
-        });
-
-        // Subscribe to realtime changes to this user's row so role updates propagate to the client
-        try {
-          // Clean up previous channel if any
-          if (channelRef.current) {
-            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-            // @ts-ignore
-            await supabase.removeChannel(channelRef.current);
-            channelRef.current = null;
-          }
-
-          const channel = supabase
-            .channel(`user-profile-${authUser.id}`)
-            .on(
-              "postgres_changes",
-              {
-                event: "UPDATE",
-                schema: "public",
-                table: "users",
-                filter: `id=eq.${authUser.id}`,
-              },
-              (payload: any) => {
-                const updated = payload.new as any;
-                setUser((prev) => {
-                  if (!prev) return prev;
-                  return {
-                    ...prev,
-                    name: updated.full_name || prev.name,
-                    role: (updated.role as "customer" | "admin") || prev.role,
-                    isPremium: updated.is_premium ?? prev.isPremium,
-                    premiumExpiresAt:
-                      updated.premium_expires_at ?? prev.premiumExpiresAt,
-                  };
-                });
-              }
-            )
-            .subscribe();
-
-          channelRef.current = channel;
-        } catch (err) {
-          // If realtime isn't available or fails, ignore — it's a best-effort feature
-          console.warn(
-            "Failed to subscribe to user profile realtime updates",
-            err
-          );
-        }
+  async function cleanupChannel() {
+    if (channelRef.current) {
+      try {
+        await supabase.removeChannel(channelRef.current);
+      } catch (err) {
+        console.warn("Failed to remove Supabase realtime channel", err);
       }
+      channelRef.current = null;
+    }
+  }
 
-      setIsLoading(false);
-    };
+  async function upsertProfile(sessionUser: SupabaseUser | null) {
+    if (!sessionUser) {
+      await cleanupChannel();
+      setUser(null);
+      return;
+    }
 
-    getInitialUser();
+    const { id, email, user_metadata, created_at } = sessionUser;
+    const metaFullName = user_metadata?.full_name || "";
+    const metaRole =
+      (user_metadata?.role as "customer" | "admin" | undefined) || "customer";
 
-    // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event: any, session: any) => {
-      // Clean up any existing realtime channel on auth change
-      if (channelRef.current) {
-        try {
-          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-          // @ts-ignore
-          await supabase.removeChannel(channelRef.current);
-        } catch {}
-        channelRef.current = null;
+    const { data: profile, error: profileError } = await supabase
+      .from("users")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (profileError) {
+      console.error("Error fetching user profile:", profileError);
+    }
+
+    if (!profile) {
+      const { error: insertError } = await supabase.from("users").insert({
+        id,
+        email,
+        full_name: metaFullName,
+        role: metaRole,
+      });
+
+      if (insertError) {
+        console.error("Error creating user profile:", insertError);
       }
+    }
 
-      if (session?.user) {
-        // Fetch profile
-        const { data: profile } = await supabase
-          .from("users")
-          .select("*")
-          .eq("id", session.user.id)
-          .maybeSingle();
+    const { data: finalProfile, error: finalError } = await supabase
+      .from("users")
+      .select("*")
+      .eq("id", id)
+      .single();
 
-        const metaFullName = session.user.user_metadata?.full_name || "";
-        const metaRole =
-          (session.user.user_metadata?.role as
-            | "customer"
-            | "admin"
-            | undefined) || "customer";
+    if (finalError) {
+      console.error("Error re-fetching user profile:", finalError);
+    }
 
-        if (!profile) {
-          await supabase.from("users").insert({
-            id: session.user.id,
-            email: session.user.email,
-            full_name: metaFullName,
-            role: metaRole,
-          });
-        }
-
-        const { data: finalProfile } = await supabase
-          .from("users")
-          .select("*")
-          .eq("id", session.user.id)
-          .single();
-
-        setUser({
-          id: session.user.id,
-          email: session.user.email!,
-          name:
-            finalProfile?.full_name ||
-            session.user.user_metadata?.full_name ||
-            "",
-          role: (finalProfile?.role as "customer" | "admin") || metaRole,
-          isPremium: finalProfile?.is_premium || false,
-          premiumExpiresAt: finalProfile?.premium_expires_at,
-          createdAt: finalProfile?.created_at || session.user.created_at,
-        });
-
-        // Subscribe to realtime changes for this user
-        try {
-          const channel = supabase
-            .channel(`user-profile-${session.user.id}`)
-            .on(
-              "postgres_changes",
-              {
-                event: "UPDATE",
-                schema: "public",
-                table: "users",
-                filter: `id=eq.${session.user.id}`,
-              },
-              (payload: any) => {
-                const updated = payload.new as any;
-                setUser((prev) => {
-                  if (!prev) return prev;
-                  return {
-                    ...prev,
-                    name: updated.full_name || prev.name,
-                    role: (updated.role as "customer" | "admin") || prev.role,
-                    isPremium: updated.is_premium ?? prev.isPremium,
-                    premiumExpiresAt:
-                      updated.premium_expires_at ?? prev.premiumExpiresAt,
-                  };
-                });
-              }
-            )
-            .subscribe();
-
-          channelRef.current = channel;
-        } catch (err) {
-          console.warn(
-            "Failed to subscribe to user profile realtime updates",
-            err
-          );
-        }
-      } else {
-        setUser(null);
-      }
+    setUser({
+      id,
+      email: email || "",
+      name: finalProfile?.full_name || metaFullName,
+      role: (finalProfile?.role as "customer" | "admin") || metaRole,
+      isPremium: finalProfile?.is_premium || false,
+      premiumExpiresAt: finalProfile?.premium_expires_at,
+      createdAt: finalProfile?.created_at || created_at,
     });
 
-    return () => {
-      subscription.unsubscribe();
-      // cleanup realtime channel
-      if (channelRef.current) {
-        try {
-          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-          // @ts-ignore
-          supabase.removeChannel(channelRef.current);
-        } catch {}
-        channelRef.current = null;
+    await cleanupChannel();
+
+    try {
+      const channel = supabase
+        .channel(`user-profile-${id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "users",
+            filter: `id=eq.${id}`,
+          },
+          (payload: any) => {
+            const updated = payload.new as any;
+            setUser((prev) => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                name: updated.full_name || prev.name,
+                role: (updated.role as "customer" | "admin") || prev.role,
+                isPremium: updated.is_premium ?? prev.isPremium,
+                premiumExpiresAt:
+                  updated.premium_expires_at ?? prev.premiumExpiresAt,
+              };
+            });
+          }
+        )
+        .subscribe();
+
+      channelRef.current = channel;
+    } catch (err) {
+      console.warn("Failed to subscribe to user profile realtime updates", err);
+    }
+  }
+
+  useEffect(() => {
+    let active = true;
+
+    const loadInitialSession = async () => {
+      const {
+        data: { session },
+        error,
+      } = await supabase.auth.getSession();
+
+      if (!active) return;
+
+      if (error) {
+        console.error("Error fetching initial session:", error);
       }
+
+      await upsertProfile(session?.user ?? null);
+      didFinishInitialSession.current = true;
+      if (active) {
+        setIsLoading(false);
+      }
+    };
+
+    loadInitialSession();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(
+      async (_event: AuthChangeEvent, session: Session | null) => {
+        if (!active) return;
+
+        await upsertProfile(session?.user ?? null);
+
+        if (!didFinishInitialSession.current) {
+          didFinishInitialSession.current = true;
+        }
+
+        if (active) {
+          setIsLoading(false);
+        }
+      }
+    );
+
+    return () => {
+      active = false;
+      try {
+        subscription.unsubscribe();
+      } catch (err) {
+        console.warn("Failed to unsubscribe from auth changes", err);
+      }
+      void cleanupChannel();
     };
   }, [supabase]);
 

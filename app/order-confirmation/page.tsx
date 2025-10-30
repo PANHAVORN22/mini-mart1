@@ -6,8 +6,7 @@ import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle2, QrCode } from "lucide-react";
-import { ABABankQRCode } from "@/components/aba-bank-qr";
+import { CheckCircle2 } from "lucide-react";
 
 export default function OrderConfirmationPage() {
   const searchParams = useSearchParams();
@@ -51,14 +50,16 @@ export default function OrderConfirmationPage() {
                 </div>
 
                 <div className="flex w-full flex-col gap-2">
-                  <Link href="/orders" className="w-full">
-                    <Button className="w-full">View Orders</Button>
-                  </Link>
-                  <Link href="/catalog" className="w-full">
-                    <Button variant="outline" className="w-full bg-transparent">
-                      Continue Shopping
-                    </Button>
-                  </Link>
+                  <Button asChild className="w-full">
+                    <Link href="/orders">View Orders</Link>
+                  </Button>
+                  <Button
+                    asChild
+                    variant="outline"
+                    className="w-full bg-transparent"
+                  >
+                    <Link href="/catalog">Continue Shopping</Link>
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -66,26 +67,18 @@ export default function OrderConfirmationPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <QrCode className="h-5 w-5" />
-                  ABA Bank Payment
+                  Payment
                 </CardTitle>
               </CardHeader>
               <CardContent className="flex flex-col items-center gap-4">
-                <ABABankQRCode orderId={orderId} amount={amount} />
-                <div className="w-full space-y-2 text-sm text-muted-foreground">
-                  <p className="font-semibold text-foreground">How to pay:</p>
-                  <ol className="list-decimal list-inside space-y-1">
-                    <li>Open your ABA Mobile app</li>
-                    <li>Tap on "Scan QR" or "Pay"</li>
-                    <li>Scan the QR code above</li>
-                    <li>Confirm the payment details</li>
-                    <li>Complete the transaction</li>
-                  </ol>
-                </div>
-                <div className="w-full rounded-lg bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 p-3">
-                  <p className="text-xs text-amber-800 dark:text-amber-200">
-                    <strong>Note:</strong> Your order will be processed once
-                    payment is confirmed. This usually takes 1-2 minutes.
+                <div className="w-full space-y-2 text-sm text-muted-foreground text-center">
+                  <p className="font-semibold text-foreground">
+                    Payment handled
+                  </p>
+                  <p>
+                    Your payment was processed. Admin has been notified and will
+                    prepare your order for delivery. You can track the order
+                    status in your dashboard.
                   </p>
                 </div>
               </CardContent>

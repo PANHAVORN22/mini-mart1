@@ -13,15 +13,47 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { useCartStore } from "@/lib/cart-store";
 import { useUser } from "@/lib/hooks/use-user";
-import { createOrder } from "@/lib/actions/orders";
 import { toast } from "sonner";
 import { MapPin, UserIcon } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import Link from "next/link";
+import type { CartItem } from "@/lib/types";
+import { ABABankQRCode } from "@/components/aba-bank-qr";
+
+type OrderSnapshot = {
+  id: string;
+  status: string;
+  total: number;
+  createdAt: string;
+  items: Array<{
+    id: string;
+    quantity: number;
+    price: number;
+    beer: {
+      id: string;
+      name: string;
+      type: string;
+      price: number;
+      imageUrl: string;
+    };
+  }>;
+};
 
 export default function CheckoutPage() {
   const router = useRouter();
   const { items, getTotal, clearCart } = useCartStore();
-  const { user, isAuthenticated } = useUser();
+  const { user, isAuthenticated, isLoading: authLoading } = useUser();
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showPayment, setShowPayment] = useState(false);
+  const [paymentOrderId, setPaymentOrderId] = useState<string | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState<number | null>(null);
 
   const [formData, setFormData] = useState({
     fullName: user?.name || "",
@@ -39,6 +71,47 @@ export default function CheckoutPage() {
   const shipping = subtotal > 50 ? 0 : 5.99;
   const tax = subtotal * 0.1;
   const total = subtotal + shipping + tax;
+
+  const persistLocalOrder = (
+    orderId: string,
+    cartItems: CartItem[],
+    totalAmount: number
+  ) => {
+    if (!user) return;
+    if (typeof window === "undefined") return;
+
+    try {
+      const key = `local-orders-${user.id}`;
+      const existingRaw = window.localStorage.getItem(key);
+      const existing: OrderSnapshot[] = existingRaw
+        ? JSON.parse(existingRaw)
+        : [];
+
+      const newOrder: OrderSnapshot = {
+        id: orderId,
+        status: "pending",
+        total: totalAmount,
+        createdAt: new Date().toISOString(),
+        items: cartItems.map((item) => ({
+          id: `${orderId}-${item.beer.id}`,
+          quantity: item.quantity,
+          price: item.beer.price,
+          beer: {
+            id: item.beer.id,
+            name: item.beer.name,
+            type: item.beer.type,
+            price: item.beer.price,
+            imageUrl: item.beer.imageUrl || "/placeholder.svg",
+          },
+        })),
+      };
+
+      const filtered = existing.filter((order) => order.id !== orderId);
+      window.localStorage.setItem(key, JSON.stringify([newOrder, ...filtered]));
+    } catch (err) {
+      console.warn("Failed to persist local order", err);
+    }
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
@@ -66,39 +139,92 @@ export default function CheckoutPage() {
         price: item.beer.price,
       }));
 
-      const result = await createOrder(orderItems, formData, user.id);
+      // Call the server API wrapper to run createOrder server action and
+      // get back a consistent JSON response (helps when RPC isn't present).
+      const res = await fetch("/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: orderItems,
+          checkoutData: formData,
+          userId: user.id,
+        }),
+      });
 
-      if (result.success) {
-        clearCart();
-        toast.success("Payment successful!", {
-          description: `Your payment was successful and your order has been placed. Admin has been notified.`,
-        });
-        router.push(
-          `/order-confirmation?orderId=${result.orderId}&amount=${total.toFixed(
-            2
-          )}`
-        );
-      } else {
-        toast.error("Failed to place order", {
-          description: result.error || "Please try again",
-        });
+      const result = await res.json();
+
+      if (!res.ok) {
+        const message =
+          typeof result?.error === "string"
+            ? result.error
+            : "Failed to create order. Please try again.";
+        toast.error("Order failed", { description: message });
+        return;
       }
+
+      const insufficient =
+        (result?.insufficient as
+          | {
+              beerId: string;
+              name: string;
+              available: number;
+              requested: number;
+            }[]
+          | undefined) ?? [];
+
+      if (insufficient.length > 0) {
+        const lines = insufficient.map(
+          (i) => `${i.name}: requested ${i.requested}, available ${i.available}`
+        );
+        toast.error("Insufficient stock for some items", {
+          description: lines.join("; "),
+        });
+        return;
+      }
+
+      if (!result?.success) {
+        const message =
+          typeof result?.error === "string"
+            ? result.error
+            : "We could not complete your order. Please try again.";
+        toast.error("Order failed", { description: message });
+        return;
+      }
+
+      const confirmedOrderId = result.orderId || `TEMP-${Date.now()}`;
+
+      persistLocalOrder(confirmedOrderId, items, total);
+      clearCart();
+      setPaymentOrderId(confirmedOrderId);
+      setPaymentAmount(total);
+      setShowPayment(true);
+      toast.success("Order created", {
+        description: "Scan the ABA QR code to complete your payment.",
+      });
     } catch (error) {
       console.error("Checkout error:", error);
-      toast.error("An error occurred", {
-        description: "Please try again later",
+      toast.error("Order failed", {
+        description:
+          "Something went wrong while processing your order. Please try again.",
       });
     } finally {
       setIsProcessing(false);
     }
   };
 
+  // Wait for the auth check to finish before deciding to redirect. This avoids
+  // sending already-logged-in users to the login page while the client is
+  // still initializing the Supabase session.
+  if (authLoading) {
+    return null;
+  }
+
   if (!isAuthenticated) {
     router.push("/login?redirect=/checkout");
     return null;
   }
 
-  if (items.length === 0) {
+  if (items.length === 0 && !paymentOrderId) {
     router.push("/cart");
     return null;
   }
@@ -292,7 +418,8 @@ export default function CheckoutPage() {
                     </Button>
 
                     <p className="text-xs text-center text-muted-foreground">
-                      Click "Online Payment" to complete the payment. You will see a confirmation once payment succeeds.
+                      Click "Online Payment" to complete the payment. You will
+                      see a confirmation once payment succeeds.
                     </p>
                   </CardContent>
                 </Card>
@@ -301,6 +428,74 @@ export default function CheckoutPage() {
           </form>
         </div>
       </main>
+
+      {/* Payment dialog with ABA QR after order creation */}
+      <Dialog open={showPayment} onOpenChange={(open) => setShowPayment(open)}>
+        <DialogContent className="max-w-xl bg-card sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Complete Your Payment</DialogTitle>
+            <DialogDescription>
+              Scan the QR code with the ABA Mobile app to finalize your order.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-5 py-2">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="rounded-lg border border-border/50 bg-muted/40 p-4">
+                <p className="text-sm text-muted-foreground">Order Number</p>
+                <p className="font-mono text-lg font-semibold">
+                  {paymentOrderId || "N/A"}
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-border/50 bg-muted/40 p-4">
+                <p className="text-sm text-muted-foreground">Amount Due</p>
+                <p className="text-2xl font-bold">
+                  ${(paymentAmount ?? total).toFixed(2)}
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-4 rounded-2xl border border-border/40 bg-background p-6">
+              <div className="flex items-center justify-between text-sm text-muted-foreground">
+                <p className="font-medium text-foreground">Scan &amp; Pay</p>
+                <span>ABA PayWay</span>
+              </div>
+              {paymentOrderId && (paymentAmount ?? total) > 0 ? (
+                <ABABankQRCode
+                  amount={paymentAmount ?? total}
+                  orderId={paymentOrderId}
+                  customerName={formData.fullName}
+                  customerEmail={formData.email}
+                />
+              ) : (
+                <div className="py-4 text-sm text-muted-foreground">
+                  Waiting for order details…
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-1 rounded-lg bg-muted/30 p-4 text-xs text-muted-foreground">
+              <p>
+                Shipping to: {formData.houseNumber} {formData.street},{" "}
+                {formData.city} {formData.zipCode}
+              </p>
+              <p>
+                Contact: {formData.fullName} — {formData.phone || "N/A"}
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <Button variant="outline" asChild className="w-full sm:w-auto">
+              <Link href="/catalog">Continue Shopping</Link>
+            </Button>
+            <Button asChild className="w-full sm:w-auto">
+              <Link href="/orders">View Orders</Link>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Footer />
     </>

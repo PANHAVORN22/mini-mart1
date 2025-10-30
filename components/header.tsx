@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useCartStore } from "@/lib/cart-store";
 import { useUser } from "@/lib/hooks/use-user";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { logout as logoutAction } from "@/lib/actions/auth";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,26 +17,55 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 export function Header() {
   const router = useRouter();
   const itemCount = useCartStore((state) => state.getItemCount());
   const { user, isAuthenticated } = useUser();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleLogout = async () => {
     const supabase = getSupabaseBrowserClient();
-    await supabase.auth.signOut();
-    router.push("/");
-    router.refresh();
+
+    try {
+      const { error: clientError } = await supabase.auth.signOut({
+        scope: "global",
+      });
+      const result = await logoutAction();
+      const serverError = result?.success === false;
+
+      if (clientError || serverError) {
+        const message =
+          clientError?.message ?? result?.error ?? "Unknown error";
+        console.error("Failed to log out:", message);
+        toast.error("Failed to log out", { description: message });
+        return;
+      }
+
+      toast.success("You have been logged out");
+      router.push("/");
+      router.refresh();
+    } catch (error) {
+      const description =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+      console.error("Unexpected logout error:", error);
+      toast.error("Failed to log out", { description });
+    }
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60">
       <div className="flex h-16 items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
             <span className="text-xl font-bold text-primary-foreground">
-            🛒
+              🛒
             </span>
           </div>
           <span className="text-xl font-bold">E-cornor</span>
@@ -71,16 +101,16 @@ export function Header() {
         </nav>
 
         <div className="flex items-center gap-4">
-          <Link href="/cart">
-            <Button variant="ghost" size="icon" className="relative">
+          <Button asChild variant="ghost" size="icon" className="relative">
+            <Link href="/cart">
               <ShoppingCart className="h-5 w-5" />
-              {itemCount > 0 && (
+              {mounted && itemCount > 0 && (
                 <Badge className="absolute -right-1 -top-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs">
                   {itemCount}
                 </Badge>
               )}
-            </Button>
-          </Link>
+            </Link>
+          </Button>
 
           {isAuthenticated && user ? (
             <DropdownMenu>
@@ -127,9 +157,9 @@ export function Header() {
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
-            <Link href="/login">
-              <Button size="sm">Login</Button>
-            </Link>
+            <Button asChild size="sm">
+              <Link href="/login">Login</Link>
+            </Button>
           )}
         </div>
       </div>

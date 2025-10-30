@@ -14,6 +14,7 @@ import { ProductManagement } from "@/components/admin/product-management";
 import { SalesOverview } from "@/components/admin/sales-overview";
 import { UserManagement } from "@/components/admin/user-management";
 import { RoleChanges } from "@/components/admin/role-changes";
+import { AdminNotifications } from "@/components/admin/notifications";
 import { Package, TrendingUp, Users, DollarSign } from "lucide-react";
 import { getAdminStats } from "@/lib/actions/admin";
 
@@ -196,12 +197,13 @@ export default function AdminPage() {
 
           {/* Management Tabs */}
           <Tabs defaultValue="products" className="space-y-6">
-            <TabsList className="grid w-full max-w-lg grid-cols-5 mx-auto">
+            <TabsList className="grid w-full max-w-lg grid-cols-6 mx-auto">
               <TabsTrigger value="products">Products</TabsTrigger>
               <TabsTrigger value="stock">Stock</TabsTrigger>
               <TabsTrigger value="sales">Sales</TabsTrigger>
               <TabsTrigger value="users">Users</TabsTrigger>
               <TabsTrigger value="audit">Audit</TabsTrigger>
+              <TabsTrigger value="notifications">Notifications</TabsTrigger>
             </TabsList>
 
             <TabsContent value="products">
@@ -222,6 +224,10 @@ export default function AdminPage() {
 
             <TabsContent value="audit">
               <RoleChanges />
+            </TabsContent>
+
+            <TabsContent value="notifications">
+              <AdminNotifications />
             </TabsContent>
           </Tabs>
         </div>

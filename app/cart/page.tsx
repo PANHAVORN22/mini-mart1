@@ -196,26 +196,28 @@ export default function CartPage() {
                 </CardContent>
                 <CardFooter className="flex-col gap-2">
                   {isAuthenticated ? (
-                    <Link href="/checkout" className="w-full">
-                      <Button className="w-full" size="lg">
-                        Online Payment
-                      </Button>
-                    </Link>
+                    <Button asChild className="w-full" size="lg">
+                      <Link href="/checkout">Online Payment</Link>
+                    </Button>
                   ) : authLoading ? (
                     // While we're checking the Supabase session, don't redirect to login.
                     <Button className="w-full" size="lg" disabled>
                       Checking session...
                     </Button>
                   ) : (
-                    <Link href="/login?redirect=/checkout" className="w-full">
-                      <Button className="w-full" size="lg">
+                    <Button asChild className="w-full" size="lg">
+                      <Link href="/login?redirect=/checkout">
                         Login to Checkout
-                      </Button>
-                    </Link>
+                      </Link>
+                    </Button>
                   )}
                   <Link href="/catalog" className="w-full">
-                    <Button variant="outline" className="w-full bg-transparent">
-                      Continue Shopping
+                    <Button
+                      asChild
+                      variant="outline"
+                      className="w-full bg-transparent"
+                    >
+                      <Link href="/catalog">Continue Shopping</Link>
                     </Button>
                   </Link>
                 </CardFooter>

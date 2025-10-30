@@ -1,122 +1,179 @@
-"use server"
+"use server";
 
-import { revalidatePath } from "next/cache"
-import { getSupabaseServerClient } from "@/lib/supabase/server"
+import { revalidatePath } from "next/cache";
+import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { getSupabaseServiceRoleClient } from "@/lib/supabase/service";
 
 interface OrderItem {
-  beerId: string
-  quantity: number
-  price: number
+  beerId: string;
+  quantity: number;
+  price: number;
 }
 
 interface CheckoutData {
-  fullName: string
-  email: string
-  phone: string
-  houseNumber: string
-  street: string
-  city: string
-  zipCode: string
+  fullName: string;
+  email: string;
+  phone: string;
+  houseNumber: string;
+  street: string;
+  city: string;
+  zipCode: string;
 }
 
-export async function createOrder(items: OrderItem[], checkoutData: CheckoutData, userId: string) {
-  const supabase = await getSupabaseServerClient()
-
-  // Calculate total
-  const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0)
-
-  // Create order
-  const { data: order, error: orderError } = await supabase
-    .from("orders")
-    .insert({
-      user_id: userId,
-      status: "pending",
-      total,
-      shipping_address: {
-        houseNumber: checkoutData.houseNumber,
-        street: checkoutData.street,
-        city: checkoutData.city,
-        zipCode: checkoutData.zipCode,
-      },
-      contact_info: {
-        fullName: checkoutData.fullName,
-        email: checkoutData.email,
-        phone: checkoutData.phone,
-      },
-    })
-    .select()
-    .single()
-
-  if (orderError || !order) {
-    console.error("Error creating order:", orderError)
-    return { success: false, error: "Failed to create order" }
-  }
-
-  // Create order items
-  const orderItems = items.map((item) => ({
-    order_id: order.id,
-    beer_id: item.beerId,
-    quantity: item.quantity,
-    price: item.price,
-  }))
-
-  const { error: itemsError } = await supabase.from("order_items").insert(orderItems)
-
-  if (itemsError) {
-    console.error("Error creating order items:", itemsError)
-    // Rollback order if items fail
-    await supabase.from("orders").delete().eq("id", order.id)
-    return { success: false, error: "Failed to create order items" }
-  }
-
-  // Update beer stock
-  for (const item of items) {
-    const { data: beer } = await supabase.from("beers").select("stock").eq("id", item.beerId).single()
-
-    if (beer) {
-      await supabase
-        .from("beers")
-        .update({ stock: beer.stock - item.quantity })
-        .eq("id", item.beerId)
-    }
-  }
-
-  revalidatePath("/orders")
-  revalidatePath("/admin")
-
-  // Create an admin notification so staff know to prepare delivery
+export async function createOrder(
+  items: OrderItem[],
+  checkoutData: CheckoutData,
+  userId: string
+) {
+  const supabase = await getSupabaseServerClient();
+  // Prefer calling a DB-side function that performs the entire create-order
+  // logic inside a single transaction. This ensures the stock check and
+  // decrement happen atomically and avoids race conditions.
   try {
-    await supabase.from("notifications").insert({
+    const rpcPayload = {
+      p_user_id: userId,
+      p_items: items,
+      p_checkout: checkoutData,
+    };
+
+    const { data: rpcData, error: rpcError } = await supabase.rpc(
+      "create_order_transaction",
+      rpcPayload
+    );
+
+    if (rpcError) {
+      console.error("create_order_transaction RPC error:", rpcError);
+      const rpcMessage =
+        rpcError.message ||
+        rpcError.details ||
+        rpcError.hint ||
+        "Failed to create order (server error)";
+      return { success: false, error: rpcMessage };
+    }
+
+    // RPC returns rows with success/order_id/error_text
+    // PostgREST will return an array of rows; pick first
+    const row = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+
+    if (!row || !row.success) {
+      // If the DB function returned an error_text (e.g. insufficient), pass it along
+      const errText = row?.error_text || "Failed to create order";
+      // try to parse insufficient details if provided as JSON text
+      try {
+        const parsed = JSON.parse(errText);
+        return {
+          success: false,
+          error: "Insufficient stock for one or more items",
+          insufficient: parsed,
+        };
+      } catch (e) {
+        return { success: false, error: errText };
+      }
+    }
+
+    const orderId = row.order_id;
+
+    // Ensure admins always get a notification for fresh orders. The DB RPC
+    // already attempts to insert one, but this fallback covers older
+    // migrations or partial setups where the notifications table was missing
+    // and prevents duplicate inserts.
+    const totalAmount = items.reduce(
+      (sum, item) => sum + item.price * item.quantity,
+      0
+    );
+
+    const notificationPayload = {
       user_id: userId,
-      order_id: order.id,
-      type: "new_order",
-      message: `New order ${order.id} placed by ${checkoutData.fullName}`,
+      order_id: orderId,
+      type: "new_order" as const,
+      message: `New order ${orderId} placed`,
       metadata: {
+        total: totalAmount,
+        contactInfo: {
+          fullName: checkoutData.fullName,
+          email: checkoutData.email,
+          phone: checkoutData.phone,
+        },
         shippingAddress: {
           houseNumber: checkoutData.houseNumber,
           street: checkoutData.street,
           city: checkoutData.city,
           zipCode: checkoutData.zipCode,
         },
-        contactInfo: {
-          fullName: checkoutData.fullName,
-          email: checkoutData.email,
-          phone: checkoutData.phone,
-        },
-        total,
-        itemCount: items.length,
+        itemCount: items.reduce((sum, item) => sum + item.quantity, 0),
       },
-    });
-  } catch (err) {
-    // Don't fail the checkout if notification fails — just log it
-    console.error("Failed to create admin notification:", err);
-  }
+    };
 
-  return { success: true, orderId: order.id }
+    let notificationWritten = false;
+
+    try {
+      const service = getSupabaseServiceRoleClient();
+
+      const { data: existingRows, error: lookupErr } = await service
+        .from("notifications")
+        .select("id")
+        .eq("order_id", orderId)
+        .eq("type", "new_order")
+        .limit(1);
+
+      if (lookupErr) {
+        console.error("Notification lookup failed:", lookupErr);
+      }
+
+      const hasExisting =
+        Array.isArray(existingRows) && existingRows.length > 0;
+
+      if (!hasExisting) {
+        const { error: insertErr } = await service
+          .from("notifications")
+          .insert(notificationPayload);
+
+        if (insertErr) {
+          console.error("Notification insert failed (service):", insertErr);
+        } else {
+          notificationWritten = true;
+        }
+      } else {
+        notificationWritten = true;
+      }
+    } catch (notificationErr) {
+      console.error(
+        "Service-role notification attempt failed:",
+        notificationErr
+      );
+    }
+
+    if (!notificationWritten) {
+      try {
+        const { error: fallbackErr } = await supabase
+          .from("notifications")
+          .insert(notificationPayload);
+
+        if (fallbackErr) {
+          console.error("Notification insert failed (session):", fallbackErr);
+        } else {
+          notificationWritten = true;
+        }
+      } catch (fallbackException) {
+        console.error(
+          "Fallback notification attempt failed:",
+          fallbackException
+        );
+      }
+    }
+
+    revalidatePath("/orders");
+    revalidatePath("/admin");
+
+    return { success: true, orderId };
+  } catch (err) {
+    console.error("createOrder error:", err);
+    return { success: false, error: "An unexpected error occurred" };
+  }
 }
 
 export async function getUserOrders(userId: string) {
-  const supabase = await getSupabaseServerClient()
+  const supabase = await getSupabaseServerClient();
 
   const { data: orders, error } = await supabase
     .from("orders")
@@ -127,14 +184,14 @@ export async function getUserOrders(userId: string) {
         *,
         beers (*)
       )
-    `,
+    `
     )
     .eq("user_id", userId)
-    .order("created_at", { ascending: false })
+    .order("created_at", { ascending: false });
 
   if (error) {
-    console.error("Error fetching orders:", error)
-    return []
+    console.error("Error fetching orders:", error);
+    return [];
   }
 
   return orders.map((order) => ({
@@ -156,11 +213,11 @@ export async function getUserOrders(userId: string) {
         imageUrl: item.beers.image_url || "/placeholder.svg",
       },
     })),
-  }))
+  }));
 }
 
 export async function getOrderById(orderId: string) {
-  const supabase = await getSupabaseServerClient()
+  const supabase = await getSupabaseServerClient();
 
   const { data: order, error } = await supabase
     .from("orders")
@@ -171,13 +228,13 @@ export async function getOrderById(orderId: string) {
         *,
         beers (*)
       )
-    `,
+    `
     )
     .eq("id", orderId)
-    .single()
+    .single();
 
   if (error || !order) {
-    return null
+    return null;
   }
 
   return {
@@ -199,5 +256,5 @@ export async function getOrderById(orderId: string) {
         imageUrl: item.beers.image_url || "/placeholder.svg",
       },
     })),
-  }
+  };
 }
