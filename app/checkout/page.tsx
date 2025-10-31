@@ -61,8 +61,8 @@ export default function CheckoutPage() {
     phone: "",
     houseNumber: "",
     street: "",
-    city: "",
-    zipCode: "",
+    project: "",
+    remarks: "",
   });
 
   const rawSubtotal = getTotal();
@@ -214,7 +214,7 @@ export default function CheckoutPage() {
 
   // Wait for the auth check to finish before deciding to redirect. This avoids
   // sending already-logged-in users to the login page while the client is
-  // still initializing the Supabase session.
+  // still initializing the subbase session.
   if (authLoading) {
     return null;
   }
@@ -329,7 +329,7 @@ export default function CheckoutPage() {
                     </div>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div className="space-y-2">
-                        <Label htmlFor="city">City</Label>
+                        <Label htmlFor="city">House of project</Label>
                         <Input
                           id="city"
                           name="city"
@@ -339,7 +339,7 @@ export default function CheckoutPage() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="zipCode">ZIP Code</Label>
+                        <Label htmlFor="zipCode">Remarks</Label>
                         <Input
                           id="zipCode"
                           name="zipCode"
@@ -431,7 +431,7 @@ export default function CheckoutPage() {
 
       {/* Payment dialog with ABA QR after order creation */}
       <Dialog open={showPayment} onOpenChange={(open) => setShowPayment(open)}>
-        <DialogContent className="max-w-xl bg-card sm:max-w-2xl">
+        <DialogContent className="max-w-xl bg-white sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Complete Your Payment</DialogTitle>
             <DialogDescription>

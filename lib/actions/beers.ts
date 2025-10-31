@@ -61,7 +61,7 @@ export async function getFeaturedBeers(limit = 4) {
     .order("created_at", { ascending: false })
 
   if (error) {
-    console.error("Error fetching featured beers:", error)
+    console.error("Error fetching featured products:", error)
     return []
   }
 

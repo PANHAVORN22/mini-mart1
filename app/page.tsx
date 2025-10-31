@@ -20,13 +20,13 @@ export default async function HomePage() {
           <div className="container">
             <div className="mx-auto max-w-3xl text-center">
               <Badge className="mb-4" variant="secondary">
-                Premium Craft Beer Selection
+                Premium Craft Products Selection
               </Badge>
               <h1 className="mb-6 text-4xl font-bold tracking-tight text-balance md:text-6xl">
-                Discover Your Perfect Beer
+                Discover Your Perfect Products
               </h1>
               <p className="mb-8 text-lg text-muted-foreground text-pretty md:text-xl">
-                Explore our curated collection of craft beers from local and
+                Explore our curated collection of craft products from local and
                 international breweries. Quality, freshness, and variety
                 delivered to your door.
               </p>
@@ -98,12 +98,12 @@ export default async function HomePage() {
           </div>
         </section>
 
-        {/* Featured Beers Section */}
+        {/* Featured products Section */}
         <section className="bg-muted/50 py-16 md:py-24">
           <div className="container">
             <div className="mb-12 text-center">
               <h2 className="mb-4 text-3xl font-bold tracking-tight md:text-4xl">
-                Featured Beers
+                Featured Products
               </h2>
               <p className="text-muted-foreground">
                 Discover our most popular craft beers
