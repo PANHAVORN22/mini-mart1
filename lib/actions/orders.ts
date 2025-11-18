@@ -82,6 +82,36 @@ export async function createOrder(
       0
     );
 
+    const pointsEarned = Math.floor(totalAmount);
+
+    if (pointsEarned > 0) {
+      try {
+        const service = getSupabaseServiceRoleClient();
+
+        const { error: pointsError } = await service.rpc(
+          "service_award_purchase_points",
+          {
+            target_user: userId,
+            points: pointsEarned,
+            reason: "Order purchase",
+            metadata: {
+              orderId,
+              total: totalAmount,
+            },
+          }
+        );
+
+        if (pointsError) {
+          console.error("Failed to award premium points:", pointsError);
+        }
+      } catch (pointsException) {
+        console.error(
+          "service_award_purchase_points RPC failed:",
+          pointsException
+        );
+      }
+    }
+
     const notificationPayload = {
       user_id: userId,
       order_id: orderId,

@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { RefreshCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,24 +22,40 @@ export function AdminNotifications() {
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    const fetchNotifications = async () => {
-      try {
-        const res = await fetch("/api/admin/notifications");
-        const json = await res.json();
-        if (json.success) {
-          setItems(json.data);
-        }
-      } catch (err) {
-        console.error("Failed to load notifications", err);
-      } finally {
+  const loadNotifications = useCallback(async (isManual = false) => {
+    if (isManual) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
+    try {
+      const res = await fetch("/api/admin/notifications");
+      const json = await res.json();
+      if (json.success) {
+        setItems(json.data);
+      } else if (isManual) {
+        toast.error(json.error || "Failed to load notifications");
+      }
+    } catch (err) {
+      console.error("Failed to load notifications", err);
+      if (isManual) {
+        toast.error("Failed to load notifications");
+      }
+    } finally {
+      if (isManual) {
+        setRefreshing(false);
+      } else {
         setLoading(false);
       }
-    };
-
-    fetchNotifications();
+    }
   }, []);
+
+  useEffect(() => {
+    loadNotifications(false);
+  }, [loadNotifications]);
 
   if (loading) {
     return (
@@ -53,8 +70,23 @@ export function AdminNotifications() {
   if (items.length === 0) {
     return (
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle>Notifications</CardTitle>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={refreshing}
+            onClick={() => loadNotifications(true)}
+          >
+            {refreshing ? (
+              "Refreshing..."
+            ) : (
+              <span className="flex items-center gap-2">
+                <RefreshCcw className="h-4 w-4" />
+                Refresh
+              </span>
+            )}
+          </Button>
         </CardHeader>
         <CardContent>No notifications</CardContent>
       </Card>
@@ -63,8 +95,23 @@ export function AdminNotifications() {
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <CardTitle>Notifications</CardTitle>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={refreshing}
+          onClick={() => loadNotifications(true)}
+        >
+          {refreshing ? (
+            "Refreshing..."
+          ) : (
+            <span className="flex items-center gap-2">
+              <RefreshCcw className="h-4 w-4" />
+              Refresh
+            </span>
+          )}
+        </Button>
       </CardHeader>
       <CardContent>
         <div className="space-y-3">
@@ -75,6 +122,27 @@ export function AdminNotifications() {
                 <p className="text-xs text-muted-foreground">
                   {new Date(n.createdAt).toLocaleString()}
                 </p>
+                {n.type === "reward_redemption" && (
+                  <div className="mt-1 space-y-1 text-xs text-muted-foreground">
+                    {n.metadata?.reward_name && (
+                      <p>Reward: {n.metadata.reward_name}</p>
+                    )}
+                    {n.metadata?.verification_code && (
+                      <p>
+                        Code:{" "}
+                        <span className="font-mono">
+                          {n.metadata.verification_code}
+                        </span>
+                      </p>
+                    )}
+                    <Link
+                      href="/admin?tab=redemptions"
+                      className="text-primary underline"
+                    >
+                      Review redemption details
+                    </Link>
+                  </div>
+                )}
                 {n.orderId && (
                   <Link
                     href={`/orders/${n.orderId}`}

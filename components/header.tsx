@@ -17,36 +17,47 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useHasMounted } from "@/hooks/use-has-mounted";
 
 export function Header() {
   const router = useRouter();
   const itemCount = useCartStore((state) => state.getItemCount());
-  const { user, isAuthenticated } = useUser();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const { user, isAuthenticated, refreshUser } = useUser();
+  const mounted = useHasMounted();
 
   const handleLogout = async () => {
     const supabase = getSupabaseBrowserClient();
 
     try {
-      const { error: clientError } = await supabase.auth.signOut({
-        scope: "global",
-      });
-      const result = await logoutAction();
-      const serverError = result?.success === false;
+      const serverResult = await logoutAction();
+      const serverFailed = serverResult?.success === false;
+      const serverMessage = serverResult?.error;
 
-      if (clientError || serverError) {
+      const { error: clientError } = await supabase.auth.signOut({
+        scope: "local",
+      });
+      const clientFailed = Boolean(clientError);
+
+      if (serverFailed && clientFailed) {
         const message =
-          clientError?.message ?? result?.error ?? "Unknown error";
+          clientError?.message ?? serverMessage ?? "Unknown error";
         console.error("Failed to log out:", message);
         toast.error("Failed to log out", { description: message });
         return;
       }
+
+      if (serverFailed || clientFailed) {
+        console.warn("Partial logout error", {
+          serverFailed,
+          serverMessage,
+          clientError: clientError?.message,
+        });
+      }
+
+      await refreshUser().catch((error) => {
+        console.error("Failed to refresh user after logout:", error);
+      });
 
       toast.success("You have been logged out");
       router.push("/");
@@ -90,6 +101,14 @@ export function Header() {
           >
             Premium
           </Link>
+          {user?.isPremium && (
+            <Link
+              href="/rewards"
+              className="text-sm font-medium hover:text-primary transition-colors"
+            >
+              Rewards
+            </Link>
+          )}
           {user?.role === "admin" && (
             <Link
               href="/admin"
@@ -141,6 +160,11 @@ export function Header() {
                 <DropdownMenuItem asChild>
                   <Link href="/orders">Orders</Link>
                 </DropdownMenuItem>
+                {user.isPremium && (
+                  <DropdownMenuItem asChild>
+                    <Link href="/rewards">Premium Rewards</Link>
+                  </DropdownMenuItem>
+                )}
                 {user.role === "admin" && (
                   <DropdownMenuItem asChild>
                     <Link href="/admin">Admin Panel</Link>

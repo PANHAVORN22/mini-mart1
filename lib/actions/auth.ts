@@ -107,7 +107,7 @@ export async function logout() {
   const supabase = await getSupabaseServerClient();
   const { error } = await supabase.auth.signOut({ scope: "global" });
 
-  if (error) {
+  if (error && error.message !== "Not authenticated" && error.status !== 401) {
     console.error(" Logout error:", error.message);
     return { success: false, error: error.message };
   }
@@ -141,6 +141,7 @@ export async function getUser() {
     role: profile?.role || "customer",
     isPremium: profile?.is_premium || false,
     premiumExpiresAt: profile?.premium_expires_at,
+    premiumPoints: profile?.premium_points ?? 0,
     createdAt: profile?.created_at || user.created_at,
   };
 }

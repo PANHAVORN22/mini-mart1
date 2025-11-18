@@ -1,8 +1,451 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getSupabaseServerClient } from "@/lib/supabase/server";
+import {
+  getSupabaseServerClient,
+  type SupabaseCookieStore,
+} from "@/lib/supabase/server";
 import { getSupabaseServiceRoleClient } from "@/lib/supabase/service";
+import type { PremiumEvent, PremiumRewardItem } from "@/lib/types";
+
+export interface AdminPremiumMember {
+  id: string;
+  email: string;
+  full_name: string | null;
+  premium_points: number | null;
+  is_premium: boolean | null;
+  created_at: string;
+}
+
+export interface AdminProductsResult {
+  products: any[];
+  legacyMode: boolean;
+  error?: string;
+  status?: number;
+}
+
+type SupabaseServerClient = Awaited<ReturnType<typeof getSupabaseServerClient>>;
+type SupabaseUser = NonNullable<
+  Awaited<ReturnType<SupabaseServerClient["auth"]["getUser"]>>["data"]["user"]
+>;
+
+type AdminAccessError = { message: string; status: number };
+
+interface AdminAccessContextOptions {
+  cookieStore?: SupabaseCookieStore;
+  accessToken?: string;
+}
+
+async function resolveAdminAccess(options?: AdminAccessContextOptions): Promise<
+  | {
+      service: ReturnType<typeof getSupabaseServiceRoleClient>;
+      supabase: SupabaseServerClient;
+      adminUser: SupabaseUser;
+    }
+  | { error: AdminAccessError }
+> {
+  try {
+    const supabase = await getSupabaseServerClient(options?.cookieStore);
+    const service = getSupabaseServiceRoleClient();
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser(options?.accessToken);
+
+    if (authError || !user) {
+      console.warn("Admin access denied: missing user", {
+        hasAuthError: Boolean(authError),
+        authErrorMessage: authError?.message,
+      });
+      return { error: { message: "Not authenticated", status: 401 } };
+    }
+
+    const { data: profile, error: profileError } = await service
+      .from("users")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (profileError) {
+      console.error("Failed to verify admin role:", profileError);
+      return {
+        error: { message: "Unable to verify permissions", status: 500 },
+      };
+    }
+
+    if (!profile || profile.role !== "admin") {
+      return { error: { message: "Forbidden", status: 403 } };
+    }
+
+    return { service, supabase, adminUser: user };
+  } catch (error) {
+    console.error("Unexpected error resolving admin access:", error);
+    return {
+      error: { message: "Unable to verify permissions", status: 500 },
+    };
+  }
+}
+
+export interface AdminPremiumEventsResult {
+  events: PremiumEvent[];
+  error?: string;
+  status?: number;
+  tableMissing?: boolean;
+}
+
+export interface AdminPremiumRewardsResult {
+  rewards: PremiumRewardItem[];
+  error?: string;
+  status?: number;
+}
+
+export interface AdminPremiumMembersResult {
+  members: AdminPremiumMember[];
+  error?: string;
+  status?: number;
+}
+
+interface AdjustPremiumPointsResult {
+  newBalance?: number;
+  error?: string;
+  status?: number;
+}
+
+export async function getAdminProducts(): Promise<AdminProductsResult> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const service = getSupabaseServiceRoleClient();
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return {
+        products: [],
+        legacyMode: false,
+        error: "Not authenticated",
+        status: 401,
+      };
+    }
+
+    const { data: profile, error: profileError } = await service
+      .from("users")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (profileError) {
+      console.error("Failed to verify admin role:", profileError);
+      return {
+        products: [],
+        legacyMode: false,
+        error: "Unable to verify permissions",
+        status: 500,
+      };
+    }
+
+    if (!profile || profile.role !== "admin") {
+      return {
+        products: [],
+        legacyMode: false,
+        error: "Forbidden",
+        status: 403,
+      };
+    }
+
+    const { data: products, error: productError } = await service
+      .from("products")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    const missingProductTable =
+      productError &&
+      (productError.code === "42P01" ||
+        productError.message?.toLowerCase().includes("products"));
+
+    if (missingProductTable) {
+      const { data: beers, error: beersError } = await service
+        .from("beers")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (beersError) {
+        console.error("Failed to fetch fallback beers data:", beersError);
+        return {
+          products: [],
+          legacyMode: false,
+          error: "Failed to fetch inventory",
+          status: 500,
+        };
+      }
+
+      const transformed = (beers || []).map((beer: any) => ({
+        id: beer.id,
+        name: beer.name,
+        brand: beer.name?.split(" ")[0] || "",
+        category: "beer",
+        type: beer.type || "beer",
+        price: beer.price,
+        stock: beer.stock,
+        description: beer.description,
+        image_url: beer.image_url,
+        is_premium: beer.is_premium,
+        alcohol_content: beer.alcohol_content,
+        volume: beer.volume,
+        caffeine: null,
+        expiry_date: null,
+        barcode: null,
+        supplier: null,
+        cost_price: beer.cost_price,
+        created_at: beer.created_at,
+        updated_at: beer.updated_at,
+      }));
+
+      return { products: transformed, legacyMode: true };
+    }
+
+    if (productError) {
+      console.error("Failed to fetch products:", productError);
+      return {
+        products: [],
+        legacyMode: false,
+        error: "Failed to fetch inventory",
+        status: 500,
+      };
+    }
+
+    return { products: products || [], legacyMode: false };
+  } catch (error) {
+    console.error("Unexpected error fetching admin products:", error);
+    return {
+      products: [],
+      legacyMode: false,
+      error: "Failed to fetch inventory",
+      status: 500,
+    };
+  }
+}
+
+export async function getPremiumEventsForAdmin(): Promise<AdminPremiumEventsResult> {
+  try {
+    const context = await resolveAdminAccess();
+    if ("error" in context) {
+      return {
+        events: [],
+        error: context.error.message,
+        status: context.error.status,
+      };
+    }
+
+    const { service } = context;
+
+    const { data: events, error } = await service
+      .from("premium_events")
+      .select("*")
+      .order("starts_at", { ascending: false });
+
+    const missingTable =
+      error &&
+      (error.code === "42P01" ||
+        error.message?.toLowerCase().includes("premium_events"));
+
+    if (missingTable) {
+      return {
+        events: [],
+        error: "premium_events table missing",
+        status: 404,
+        tableMissing: true,
+      };
+    }
+
+    if (error) {
+      console.error("Failed to fetch premium events:", error);
+      return {
+        events: [],
+        error: "Failed to fetch premium events",
+        status: 500,
+      };
+    }
+
+    return { events: events || [], status: 200 };
+  } catch (error) {
+    console.error("Unexpected error fetching premium events:", error);
+    return {
+      events: [],
+      error: "Failed to fetch premium events",
+      status: 500,
+    };
+  }
+}
+
+export async function getPremiumRewardsForAdmin(): Promise<AdminPremiumRewardsResult> {
+  try {
+    const context = await resolveAdminAccess();
+    if ("error" in context) {
+      return {
+        rewards: [],
+        error: context.error.message,
+        status: context.error.status,
+      };
+    }
+
+    const { service } = context;
+
+    const { data: rewards, error } = await service
+      .from("premium_reward_items")
+      .select("*")
+      .order("points_cost", { ascending: true });
+
+    if (error) {
+      console.error("Failed to fetch premium rewards:", error);
+      return {
+        rewards: [],
+        error: "Failed to fetch premium rewards",
+        status: 500,
+      };
+    }
+
+    return { rewards: rewards || [], status: 200 };
+  } catch (error) {
+    console.error("Unexpected error fetching premium rewards:", error);
+    return {
+      rewards: [],
+      error: "Failed to fetch premium rewards",
+      status: 500,
+    };
+  }
+}
+
+export async function getPremiumMembersForAdmin(): Promise<AdminPremiumMembersResult> {
+  try {
+    const context = await resolveAdminAccess();
+    if ("error" in context) {
+      return {
+        members: [],
+        error: context.error.message,
+        status: context.error.status,
+      };
+    }
+
+    const { service } = context;
+
+    const { data: members, error } = await service
+      .from("users")
+      .select("id, email, full_name, premium_points, is_premium, created_at")
+      .eq("is_premium", true)
+      .order("premium_points", { ascending: false })
+      .limit(500);
+
+    if (error) {
+      console.error("Failed to fetch premium members:", error);
+      return {
+        members: [],
+        error: "Failed to load premium members",
+        status: 500,
+      };
+    }
+
+    return { members: members || [], status: 200 };
+  } catch (error) {
+    console.error("Unexpected error fetching premium members:", error);
+    return {
+      members: [],
+      error: "Failed to load premium members",
+      status: 500,
+    };
+  }
+}
+
+interface AdjustPremiumPointsParams {
+  targetUserId: string;
+  delta: number;
+  reason?: string;
+}
+
+interface AdjustPremiumPointsOptions {
+  cookieStore?: SupabaseCookieStore;
+  accessToken?: string;
+}
+
+export async function adjustPremiumPointsForAdmin(
+  { targetUserId, delta, reason }: AdjustPremiumPointsParams,
+  options?: AdjustPremiumPointsOptions
+): Promise<AdjustPremiumPointsResult> {
+  if (!targetUserId) {
+    return { error: "Missing target user", status: 400 };
+  }
+
+  if (!Number.isFinite(delta) || delta === 0) {
+    return { error: "Delta must be a non-zero number", status: 400 };
+  }
+
+  const context = await resolveAdminAccess({
+    cookieStore: options?.cookieStore,
+    accessToken: options?.accessToken,
+  });
+  if ("error" in context) {
+    return { error: context.error.message, status: context.error.status };
+  }
+
+  const { service, adminUser } = context;
+
+  const roundedDelta = Math.trunc(delta);
+
+  if (!Number.isFinite(roundedDelta) || roundedDelta === 0) {
+    return { error: "Delta must resolve to a non-zero integer", status: 400 };
+  }
+
+  const { data: targetUser, error: targetError } = await service
+    .from("users")
+    .select("premium_points")
+    .eq("id", targetUserId)
+    .maybeSingle();
+
+  if (targetError) {
+    console.error(
+      "Error loading target user for point adjustment:",
+      targetError
+    );
+    return { error: "Failed to load member", status: 500 };
+  }
+
+  if (!targetUser) {
+    return { error: "Member not found", status: 404 };
+  }
+
+  const currentBalance = targetUser.premium_points ?? 0;
+  const nextBalance = Math.max(0, currentBalance + roundedDelta);
+  const sanitizedReason = reason?.trim() || "Manual adjustment";
+
+  const { error: updateError } = await service
+    .from("users")
+    .update({ premium_points: nextBalance })
+    .eq("id", targetUserId);
+
+  if (updateError) {
+    console.error("Failed to update premium points:", updateError);
+    return { error: "Failed to update points", status: 500 };
+  }
+
+  const { error: ledgerError } = await service
+    .from("premium_point_ledger")
+    .insert({
+      user_id: targetUserId,
+      actor_user_id: adminUser.id,
+      delta: roundedDelta,
+      reason: sanitizedReason,
+      metadata: { source: "admin_dashboard" },
+    });
+
+  if (ledgerError) {
+    console.error("Failed to record premium point ledger entry:", ledgerError);
+  }
+
+  return { newBalance: nextBalance, status: 200 };
+}
 
 export async function getAllOrders() {
   const supabase = await getSupabaseServerClient();
@@ -355,35 +798,45 @@ export async function deleteBeer(beerId: string) {
 }
 
 export async function getAdminStats() {
-  const supabase = await getSupabaseServerClient();
+  try {
+    const supabase = await getSupabaseServerClient();
 
-  // Get total stock
-  const { data: beers } = await supabase.from("beers").select("stock");
-  const totalStock = beers?.reduce((sum, beer) => sum + beer.stock, 0) || 0;
+    // Get total stock
+    const { data: beers } = await supabase.from("beers").select("stock");
+    const totalStock = beers?.reduce((sum, beer) => sum + beer.stock, 0) || 0;
 
-  // Get total revenue
-  const { data: orders } = await supabase
-    .from("orders")
-    .select("total, status");
-  const totalRevenue =
-    orders
-      ?.filter((o) => o.status !== "cancelled")
-      .reduce((sum, order) => sum + Number(order.total), 0) || 0;
+    // Get total revenue
+    const { data: orders } = await supabase
+      .from("orders")
+      .select("total, status");
+    const totalRevenue =
+      orders
+        ?.filter((o) => o.status !== "cancelled")
+        .reduce((sum, order) => sum + Number(order.total), 0) || 0;
 
-  // Get order count
-  const orderCount = orders?.length || 0;
+    // Get order count
+    const orderCount = orders?.length || 0;
 
-  // Get user count
-  const { count: userCount } = await supabase
-    .from("users")
-    .select("*", { count: "exact", head: true });
+    // Get user count
+    const { count: userCount } = await supabase
+      .from("users")
+      .select("*", { count: "exact", head: true });
 
-  return {
-    totalStock,
-    totalRevenue,
-    orderCount,
-    userCount: userCount || 0,
-  };
+    return {
+      totalStock,
+      totalRevenue,
+      orderCount,
+      userCount: userCount || 0,
+    };
+  } catch (error) {
+    console.error("Unexpected error fetching admin stats:", error);
+    return {
+      totalStock: 0,
+      totalRevenue: 0,
+      orderCount: 0,
+      userCount: 0,
+    };
+  }
 }
 
 export async function getRoleChanges(limit = 50) {

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -498,12 +499,14 @@ export function ProductManagement() {
                 <TableRow key={beer.id}>
                   <TableCell className="font-medium">
                     <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-lg overflow-hidden bg-muted">
+                      <div className="relative h-12 w-12 overflow-hidden rounded-lg bg-muted">
                         {beer.image_url ? (
-                          <img
+                          <Image
                             src={beer.image_url}
                             alt={beer.name}
-                            className="w-full h-full object-cover"
+                            fill
+                            sizes="48px"
+                            className="object-cover"
                           />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center">
@@ -795,6 +798,8 @@ export function ProductManagement() {
                   <div className="space-y-2 text-center">
                     <Label className="block">Preview</Label>
                     <div className="w-full max-w-xs mx-auto">
+                      {/* Preview uses a blob URL unsupported by next/image */}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={imagePreview}
                         alt="Preview"

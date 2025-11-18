@@ -1,8 +1,10 @@
 "use client";
 
+import Image from "next/image";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
@@ -10,17 +12,78 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { useCartStore } from "@/lib/cart-store";
+import { cartItemToProduct, useCartStore } from "@/lib/cart-store";
+import type { Product } from "@/lib/types";
 import { Minus, Plus, Trash2, ShoppingBag } from "lucide-react";
 import Link from "next/link";
 import { useUser } from "@/lib/hooks/use-user";
+
+const CATEGORY_META: Record<string, { label: string; badgeClass: string }> = {
+  beer: { label: "Beer", badgeClass: "bg-amber-100 text-amber-800" },
+  "energy-drink": {
+    label: "Energy Drink",
+    badgeClass: "bg-red-100 text-red-800",
+  },
+  milk: { label: "Milk & Dairy", badgeClass: "bg-blue-100 text-blue-800" },
+  "daily-product": {
+    label: "Daily Product",
+    badgeClass: "bg-green-100 text-green-800",
+  },
+};
+
+const getCategoryMeta = (category: string) =>
+  CATEGORY_META[category] || {
+    label: "Product",
+    badgeClass: "bg-gray-100 text-gray-800",
+  };
+
+const getProductDetails = (product: Product) => {
+  const details: string[] = [];
+  if (product.category === "beer") {
+    if (product.abv) details.push(`ABV ${product.abv}%`);
+    if (product.volume) details.push(`${product.volume}ml`);
+  } else if (product.category === "energy-drink") {
+    if (product.caffeine) details.push(`${product.caffeine}mg caffeine`);
+    if (product.volume) details.push(`${product.volume}ml`);
+  } else if (product.category === "milk") {
+    if (product.volume) details.push(`${product.volume}ml`);
+    if (product.expiryDate)
+      details.push(
+        `Expires ${new Date(product.expiryDate).toLocaleDateString()}`
+      );
+  } else if (product.category === "daily-product") {
+    if (product.expiryDate)
+      details.push(
+        `Expires ${new Date(product.expiryDate).toLocaleDateString()}`
+      );
+  } else {
+    if (product.volume) details.push(`${product.volume}ml`);
+  }
+
+  return details;
+};
 
 export default function CartPage() {
   const { items, removeItem, updateQuantity, getTotal, clearCart } =
     useCartStore();
   // Prefer the real authentication state from Supabase-backed `useUser`.
-  const { isAuthenticated, isLoading: authLoading } = useUser();
+  const { user, isAuthenticated, isLoading: authLoading } = useUser();
   const total = getTotal();
+  const premiumDiscountRate = 0.15;
+  const premiumDiscount = user?.isPremium ? total * premiumDiscountRate : 0;
+  const discountedSubtotal = Math.max(0, total - premiumDiscount);
+  const shippingThreshold = 50;
+  const premiumFreeShipping = Boolean(user?.isPremium);
+  const shippingCost = premiumFreeShipping
+    ? 0
+    : discountedSubtotal >= shippingThreshold
+    ? 0
+    : 5.99;
+  const tax = discountedSubtotal * 0.1;
+  const orderTotal = discountedSubtotal + shippingCost + tax;
+  const amountForFreeShipping = premiumFreeShipping
+    ? 0
+    : Math.max(0, shippingThreshold - discountedSubtotal);
 
   if (items.length === 0) {
     return (
@@ -36,7 +99,7 @@ export default function CartPage() {
                 <div>
                   <h2 className="text-xl font-semibold">Your cart is empty</h2>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    Add some beers to get started
+                    Add some products to get started
                   </p>
                 </div>
                 <Link href="/catalog">
@@ -68,81 +131,105 @@ export default function CartPage() {
         </div>
 
         <div className="container py-8">
-          <div className="grid gap-8 lg:grid-cols-[1fr_400px]">
+          <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_360px]">
             <div className="space-y-4">
-              {items.map((item) => (
-                <Card key={item.beer.id}>
-                  <CardContent className="p-6">
-                    <div className="flex gap-4">
-                      <div className="h-24 w-24 shrink-0 overflow-hidden rounded-lg bg-muted">
-                        <img
-                          src={item.beer.imageUrl || "/placeholder.svg"}
-                          alt={item.beer.name}
-                          className="h-full w-full object-cover"
-                        />
-                      </div>
+              {items.map((item) => {
+                const product = cartItemToProduct(item);
+                const categoryMeta = getCategoryMeta(product.category);
+                const productDetails = getProductDetails(product);
 
-                      <div className="flex flex-1 flex-col justify-between">
-                        <div>
-                          <h3 className="font-semibold">{item.beer.name}</h3>
-                          <p className="text-sm text-muted-foreground">
-                            {item.beer.brand}
-                          </p>
-                          <p className="mt-1 text-sm">
-                            {item.beer.type} • {item.beer.abv}% ABV
-                          </p>
+                return (
+                  <Card key={product.id}>
+                    <CardContent className="p-6">
+                      <div className="flex gap-4">
+                        <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-lg bg-muted">
+                          <Image
+                            src={product.imageUrl || "/placeholder.svg"}
+                            alt={product.name}
+                            fill
+                            sizes="96px"
+                            className="object-cover"
+                          />
                         </div>
 
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Button
-                              size="icon"
-                              variant="outline"
-                              className="h-8 w-8 bg-transparent"
-                              onClick={() =>
-                                updateQuantity(
-                                  item.beer.id,
-                                  Math.max(1, item.quantity - 1)
-                                )
-                              }
-                            >
-                              <Minus className="h-4 w-4" />
-                            </Button>
-                            <span className="w-8 text-center font-medium">
-                              {item.quantity}
-                            </span>
-                            <Button
-                              size="icon"
-                              variant="outline"
-                              className="h-8 w-8 bg-transparent"
-                              onClick={() =>
-                                updateQuantity(item.beer.id, item.quantity + 1)
-                              }
-                              disabled={item.quantity >= item.beer.stock}
-                            >
-                              <Plus className="h-4 w-4" />
-                            </Button>
+                        <div className="flex flex-1 flex-col justify-between">
+                          <div>
+                            <h3 className="font-semibold">{product.name}</h3>
+                            <p className="text-sm text-muted-foreground">
+                              {product.brand}
+                            </p>
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                              <Badge
+                                className={`text-xs ${categoryMeta.badgeClass}`}
+                              >
+                                {categoryMeta.label}
+                              </Badge>
+                              <span className="text-xs capitalize text-muted-foreground">
+                                {product.type}
+                              </span>
+                            </div>
+                            {productDetails.length > 0 && (
+                              <div className="mt-2 flex flex-wrap gap-x-4 text-xs text-muted-foreground">
+                                {productDetails.map((detail) => (
+                                  <span key={`${product.id}-${detail}`}>
+                                    {detail}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                           </div>
 
-                          <div className="flex items-center gap-4">
-                            <span className="text-lg font-bold">
-                              ${(item.beer.price * item.quantity).toFixed(2)}
-                            </span>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="text-destructive"
-                              onClick={() => removeItem(item.beer.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="icon"
+                                variant="outline"
+                                className="h-8 w-8 bg-transparent"
+                                onClick={() =>
+                                  updateQuantity(
+                                    product.id,
+                                    Math.max(1, item.quantity - 1)
+                                  )
+                                }
+                              >
+                                <Minus className="h-4 w-4" />
+                              </Button>
+                              <span className="w-8 text-center font-medium">
+                                {item.quantity}
+                              </span>
+                              <Button
+                                size="icon"
+                                variant="outline"
+                                className="h-8 w-8 bg-transparent"
+                                onClick={() =>
+                                  updateQuantity(product.id, item.quantity + 1)
+                                }
+                                disabled={item.quantity >= product.stock}
+                              >
+                                <Plus className="h-4 w-4" />
+                              </Button>
+                            </div>
+
+                            <div className="flex items-center gap-4">
+                              <span className="text-lg font-bold">
+                                ${(product.price * item.quantity).toFixed(2)}
+                              </span>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="text-destructive"
+                                onClick={() => removeItem(product.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardContent>
+                  </Card>
+                );
+              })}
 
               <Button
                 variant="outline"
@@ -153,44 +240,66 @@ export default function CartPage() {
               </Button>
             </div>
 
-            <div>
-              <Card className="sticky top-20">
+            <div className="lg:ml-auto">
+              <Card className="sticky top-20 lg:max-w-sm">
                 <CardHeader>
                   <CardTitle>Order Summary</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Subtotal</span>
+                      <span className="text-muted-foreground">Items</span>
                       <span>${total.toFixed(2)}</span>
                     </div>
+                    {premiumDiscount > 0 && (
+                      <div className="flex justify-between text-sm text-emerald-600">
+                        <span>
+                          Premium discount (
+                          {Math.round(premiumDiscountRate * 100)}%)
+                        </span>
+                        <span>- ${premiumDiscount.toFixed(2)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Shipping</span>
-                      <span>{total > 50 ? "FREE" : "$5.99"}</span>
+                      <span className="text-muted-foreground">
+                        Subtotal{premiumDiscount > 0 ? " (after discount)" : ""}
+                      </span>
+                      <span>${discountedSubtotal.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">
+                        Shipping{premiumFreeShipping ? " (premium perk)" : ""}
+                      </span>
+                      <span>
+                        {shippingCost === 0
+                          ? "FREE"
+                          : `$${shippingCost.toFixed(2)}`}
+                      </span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Tax</span>
-                      <span>${(total * 0.1).toFixed(2)}</span>
+                      <span>${tax.toFixed(2)}</span>
                     </div>
                   </div>
 
                   <div className="border-t pt-4">
                     <div className="flex justify-between text-lg font-bold">
                       <span>Total</span>
-                      <span>
-                        $
-                        {(
-                          total +
-                          (total > 50 ? 0 : 5.99) +
-                          total * 0.1
-                        ).toFixed(2)}
-                      </span>
+                      <span>${orderTotal.toFixed(2)}</span>
                     </div>
                   </div>
 
-                  {total < 50 && (
+                  {!premiumFreeShipping &&
+                    shippingCost > 0 &&
+                    amountForFreeShipping > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        Spend ${amountForFreeShipping.toFixed(2)} more for free
+                        shipping
+                      </p>
+                    )}
+                  {premiumFreeShipping && (
                     <p className="text-xs text-muted-foreground">
-                      Add ${(50 - total).toFixed(2)} more for free shipping
+                      Premium members always get free shipping.
                     </p>
                   )}
                 </CardContent>

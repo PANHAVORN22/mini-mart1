@@ -1,6 +1,7 @@
 "use client";
 
 import { Card, CardContent } from "@/components/ui/card";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Crown, ShoppingCart, Lock } from "lucide-react";
@@ -54,14 +55,12 @@ export function BeerCard({ beer, compact = false }: BeerCardProps) {
       }
     >
       <div className={imageContainerClass}>
-        <img
+        <Image
           src={beer.imageUrl || "/placeholder.svg"}
           alt={beer.name}
-          className={
-            compact
-              ? "h-full w-full object-cover"
-              : "h-full w-full object-cover"
-          }
+          fill
+          sizes="(min-width:1024px) 25vw, (min-width:640px) 33vw, 100vw"
+          className="object-cover"
         />
         {beer.isPremiumOnly && (
           <Badge className="absolute right-2 top-2 gap-1" variant="secondary">

@@ -1,9 +1,20 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+function serializeCookies(
+  cookies: ReturnType<NextRequest["cookies"]["getAll"]>
+): string {
+  return cookies.map(({ name, value }) => `${name}=${value}`).join("; ");
+}
+
 export async function middleware(request: NextRequest) {
+  if (request.nextUrl.pathname.startsWith("/api/")) {
+    return NextResponse.next();
+  }
+
+  const requestHeaders = new Headers(request.headers);
   let supabaseResponse = NextResponse.next({
-    request,
+    request: { headers: requestHeaders },
   });
 
   const supabase = createServerClient(
@@ -16,11 +27,18 @@ export async function middleware(request: NextRequest) {
         },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value, options }) =>
-            request.cookies.set(name, value)
+            request.cookies.set(name, value, options)
           );
+
+          requestHeaders.set(
+            "cookie",
+            serializeCookies(request.cookies.getAll())
+          );
+
           supabaseResponse = NextResponse.next({
-            request,
+            request: { headers: requestHeaders },
           });
+
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
           );

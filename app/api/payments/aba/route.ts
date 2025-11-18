@@ -33,6 +33,56 @@ export async function POST(req: Request) {
       );
     }
 
+    // Development/Mock mode - return HTML form that posts to ABA PayWay
+    if (process.env.NODE_ENV === "development" || process.env.ABA_MOCK_MODE === "true") {
+      console.log("ABA Mock Mode: Creating form to submit to ABA PayWay checkout");
+      
+      // Create HTML form that auto-submits to ABA PayWay
+      const returnUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/order-confirmation?orderId=${orderId}&amount=${amount}`;
+      
+      const htmlForm = `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Redirecting to ABA PayWay...</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 2s linear infinite; margin: 20px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <h2>Redirecting to ABA PayWay...</h2>
+    <div class="loader"></div>
+    <p>Please wait while we redirect you to complete your payment.</p>
+    
+    <form id="abaForm" action="https://sandbox.payway.com.kh/api/payment-gateway/v1/payments/purchase" method="POST">
+        <input type="hidden" name="amount" value="${amount}" />
+        <input type="hidden" name="currency" value="${currency}" />
+        <input type="hidden" name="invoice_id" value="${orderId}" />
+        <input type="hidden" name="customer_name" value="${customerName || ''}" />
+        <input type="hidden" name="customer_email" value="${customerEmail || ''}" />
+        <input type="hidden" name="return_url" value="${returnUrl}" />
+        <input type="hidden" name="merchant_id" value="${process.env.PAYWAY_MERCHANT_ID || 'DEMO_MERCHANT'}" />
+    </form>
+    
+    <script>
+        // Auto-submit the form after 2 seconds
+        setTimeout(function() {
+            document.getElementById('abaForm').submit();
+        }, 2000);
+    </script>
+</body>
+</html>`;
+      
+      return NextResponse.json({
+        success: true,
+        html: htmlForm,
+        mock: true,
+        message: "Development mode - submitting to ABA PayWay"
+      });
+    }
+
     const base = process.env.PAYWAY_BASE_URL || "https://sandbox.payway.com.kh";
     const endpoint = `${base}/api/payment-gateway/v1/payments/purchase`;
 
@@ -60,8 +110,6 @@ export async function POST(req: Request) {
       headers,
       body: form as any,
     });
-
-    console.log("PayWay response status:", resp);
 
     const contentType = resp.headers.get("content-type") || "";
 
@@ -94,6 +142,23 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, data: text });
   } catch (err: any) {
     console.error("/api/payments/aba error:", err);
+    
+    // If we get a network error or Cloudflare block in development, fallback to mock
+    if (process.env.NODE_ENV === "development" && (
+      err.message?.includes("fetch") || 
+      err.message?.includes("network") ||
+      err.message?.includes("blocked")
+    )) {
+      console.log("Network error in development, falling back to mock mode");
+      const mockQrText = `mock://aba-payment/fallback-${Date.now()}`;
+      return NextResponse.json({
+        success: true,
+        qrText: mockQrText,
+        mock: true,
+        message: "Fallback mock due to network error"
+      });
+    }
+    
     return NextResponse.json(
       { success: false, error: err?.message || String(err) },
       { status: 500 }

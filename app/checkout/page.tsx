@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { useCartStore } from "@/lib/cart-store";
+import { cartItemToProduct, useCartStore } from "@/lib/cart-store";
 import { useUser } from "@/lib/hooks/use-user";
 import { toast } from "sonner";
 import { MapPin, UserIcon } from "lucide-react";
@@ -92,18 +92,21 @@ export default function CheckoutPage() {
         status: "pending",
         total: totalAmount,
         createdAt: new Date().toISOString(),
-        items: cartItems.map((item) => ({
-          id: `${orderId}-${item.beer.id}`,
-          quantity: item.quantity,
-          price: item.beer.price,
-          beer: {
-            id: item.beer.id,
-            name: item.beer.name,
-            type: item.beer.type,
-            price: item.beer.price,
-            imageUrl: item.beer.imageUrl || "/placeholder.svg",
-          },
-        })),
+        items: cartItems.map((item) => {
+          const product = cartItemToProduct(item);
+          return {
+            id: `${orderId}-${product.id}`,
+            quantity: item.quantity,
+            price: product.price,
+            beer: {
+              id: product.id,
+              name: product.name,
+              type: product.type,
+              price: product.price,
+              imageUrl: product.imageUrl || "/placeholder.svg",
+            },
+          };
+        }),
       };
 
       const filtered = existing.filter((order) => order.id !== orderId);
@@ -133,11 +136,14 @@ export default function CheckoutPage() {
 
     try {
       // Prepare order items (no per-item discount; apply order-level discount)
-      const orderItems = items.map((item) => ({
-        beerId: item.beer.id,
-        quantity: item.quantity,
-        price: item.beer.price,
-      }));
+      const orderItems = items.map((item) => {
+        const product = cartItemToProduct(item);
+        return {
+          beerId: product.id,
+          quantity: item.quantity,
+          price: product.price,
+        };
+      });
 
       // Call the server API wrapper to run createOrder server action and
       // get back a consistent JSON response (helps when RPC isn't present).
@@ -329,21 +335,21 @@ export default function CheckoutPage() {
                     </div>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div className="space-y-2">
-                        <Label htmlFor="city">House of project</Label>
+                        <Label htmlFor="project">House of project</Label>
                         <Input
-                          id="city"
-                          name="city"
-                          value={formData.city}
+                          id="project"
+                          name="project"
+                          value={formData.project}
                           onChange={handleInputChange}
                           required
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="zipCode">Remarks</Label>
+                        <Label htmlFor="remarks">Remarks</Label>
                         <Input
-                          id="zipCode"
-                          name="zipCode"
-                          value={formData.zipCode}
+                          id="remarks"
+                          name="remarks"
+                          value={formData.remarks}
                           onChange={handleInputChange}
                           required
                         />
@@ -361,19 +367,22 @@ export default function CheckoutPage() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="space-y-3">
-                      {items.map((item) => (
-                        <div
-                          key={item.beer.id}
-                          className="flex justify-between text-sm"
-                        >
-                          <span className="text-muted-foreground">
-                            {item.beer.name} x {item.quantity}
-                          </span>
-                          <span>
-                            ${(item.beer.price * item.quantity).toFixed(2)}
-                          </span>
-                        </div>
-                      ))}
+                      {items.map((item) => {
+                        const product = cartItemToProduct(item);
+                        return (
+                          <div
+                            key={product.id}
+                            className="flex justify-between text-sm"
+                          >
+                            <span className="text-muted-foreground">
+                              {product.name} x {item.quantity}
+                            </span>
+                            <span>
+                              ${(product.price * item.quantity).toFixed(2)}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
 
                     <Separator />
@@ -418,8 +427,8 @@ export default function CheckoutPage() {
                     </Button>
 
                     <p className="text-xs text-center text-muted-foreground">
-                      Click "Online Payment" to complete the payment. You will
-                      see a confirmation once payment succeeds.
+                      Click &quot;Online Payment&quot; to complete the payment.
+                      You will see a confirmation once payment succeeds.
                     </p>
                   </CardContent>
                 </Card>
@@ -478,7 +487,7 @@ export default function CheckoutPage() {
             <div className="space-y-1 rounded-lg bg-muted/30 p-4 text-xs text-muted-foreground">
               <p>
                 Shipping to: {formData.houseNumber} {formData.street},{" "}
-                {formData.city} {formData.zipCode}
+                {formData.project} {formData.remarks}
               </p>
               <p>
                 Contact: {formData.fullName} — {formData.phone || "N/A"}

@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ArrowRight, Star, Truck, Shield, Crown } from "lucide-react";
+import Image from "next/image";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { getFeaturedBeers } from "@/lib/actions/beers";
@@ -16,7 +17,7 @@ export default async function HomePage() {
 
       <main className="flex-1">
         {/* Hero Section */}
-        <section className="relative overflow-hidden bg-gradient-to-b from-primary/10 to-background py-20 md:py-32">
+        <section className="relative overflow-hidden bg-linear-to-b from-primary/10 to-background py-20 md:py-32">
           <div className="container">
             <div className="mx-auto max-w-3xl text-center">
               <Badge className="mb-4" variant="secondary">
@@ -113,11 +114,13 @@ export default async function HomePage() {
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
               {featuredBeers.map((beer) => (
                 <Card key={beer.id} className="overflow-hidden">
-                  <div className="aspect-square overflow-hidden bg-muted">
-                    <img
+                  <div className="relative aspect-square overflow-hidden bg-muted">
+                    <Image
                       src={beer.imageUrl || "/placeholder.svg"}
                       alt={beer.name}
-                      className="h-full w-full object-cover"
+                      fill
+                      sizes="(min-width:1024px) 25vw, (min-width:640px) 50vw, 100vw"
+                      className="object-cover"
                     />
                   </div>
                   <CardContent className="p-4">

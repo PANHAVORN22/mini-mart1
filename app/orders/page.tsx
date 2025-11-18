@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/header";
@@ -184,11 +185,13 @@ export default function OrdersPage() {
                     <div className="space-y-3">
                       {order.items.map((item) => (
                         <div key={item.id} className="flex items-center gap-4">
-                          <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-muted">
-                            <img
+                          <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-muted">
+                            <Image
                               src={item.beer.imageUrl || "/placeholder.svg"}
                               alt={item.beer.name}
-                              className="h-full w-full object-cover"
+                              fill
+                              sizes="64px"
+                              className="object-cover"
                             />
                           </div>
                           <div className="flex-1">

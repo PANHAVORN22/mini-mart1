@@ -116,7 +116,7 @@ export default function RegisterPage() {
               </div>
               <CardTitle className="text-center">Check Your Email</CardTitle>
               <CardDescription className="text-center">
-                We've sent a confirmation link to <strong>{email}</strong>
+                We&rsquo;ve sent a confirmation link to <strong>{email}</strong>
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
