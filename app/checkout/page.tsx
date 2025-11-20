@@ -476,6 +476,8 @@ export default function CheckoutPage() {
                   orderId={paymentOrderId}
                   customerName={formData.fullName}
                   customerEmail={formData.email}
+                  phone={formData.phone}
+                  items={`Order #${paymentOrderId}`}
                 />
               ) : (
                 <div className="py-4 text-sm text-muted-foreground">

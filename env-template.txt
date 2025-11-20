@@ -25,12 +25,28 @@ NODE_ENV=development
 ADMIN_SECRET_CODE=your_admin_secret_code_here
 
 # =============================================================================
-# PAYMENT CONFIGURATION (ABA BANK)
+# PAYMENT CONFIGURATION (ABA PAYWAY)
 # =============================================================================
-# For production, replace with actual ABA Bank API credentials
-ABA_MERCHANT_ID=MINIMART_BEER_SHOP
-ABA_API_KEY=your_aba_api_key_here
-ABA_SECRET_KEY=your_aba_secret_key_here
+# PayWay API Configuration - Get credentials from https://developer.payway.com.kh
+# Note: These are required fields for production PayWay integration
+
+# Merchant ID provided by PayWay
+PAYWAY_MERCHANT_ID=your_payway_merchant_id
+
+# API Key for HMAC-SHA512 hash generation (required for security)
+PAYWAY_API_KEY=your_payway_api_key
+
+# Base URL - use sandbox for testing, production for live
+# Sandbox: https://sandbox.payway.com.kh
+# Production: https://api.payway.com.kh
+PAYWAY_BASE_URL=https://sandbox.payway.com.kh
+
+# Return URL where PayWay redirects after payment completion
+# Leave empty to use NEXT_PUBLIC_BASE_URL/order-confirmation as default
+PAYWAY_RETURN_URL=
+
+# Enable mock mode for development (bypasses actual PayWay API calls)
+ABA_MOCK_MODE=true
 
 # =============================================================================
 # OPTIONAL: EMAIL CONFIGURATION
