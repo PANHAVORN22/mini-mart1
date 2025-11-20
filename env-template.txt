@@ -37,13 +37,25 @@ PAYWAY_MERCHANT_ID=your_payway_merchant_id
 PAYWAY_API_KEY=your_payway_api_key
 
 # Base URL - use sandbox for testing, production for live
-# Sandbox: https://sandbox.payway.com.kh
-# Production: https://api.payway.com.kh
-PAYWAY_BASE_URL=https://sandbox.payway.com.kh
+# Sandbox checkout: https://checkout-sandbox.payway.com.kh
+# Production checkout: https://checkout.payway.com.kh
+PAYWAY_BASE_URL=https://checkout-sandbox.payway.com.kh
 
 # Return URL where PayWay redirects after payment completion
 # Leave empty to use NEXT_PUBLIC_BASE_URL/order-confirmation as default
 PAYWAY_RETURN_URL=
+# Optional: Override cancel/success redirects (defaults are derived from NEXT_PUBLIC_BASE_URL)
+PAYWAY_CANCEL_URL=
+PAYWAY_CONTINUE_SUCCESS_URL=
+
+# Optional: Advanced checkout tuning
+# PAYWAY_VIEW_TYPE=popup
+# PAYWAY_PAYMENT_GATE=0
+# PAYWAY_PAYMENT_OPTION=
+# PAYWAY_LIFETIME_MINUTES=30
+# PAYWAY_SKIP_SUCCESS_PAGE=0
+# PAYWAY_RETURN_DEEPLINK=
+# PAYWAY_ADDITIONAL_PARAMS=
 
 # Enable mock mode for development (bypasses actual PayWay API calls)
 ABA_MOCK_MODE=true

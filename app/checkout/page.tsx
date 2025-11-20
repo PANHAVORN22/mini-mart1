@@ -2,7 +2,7 @@
 
 import type React from "react";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
@@ -15,17 +15,9 @@ import { cartItemToProduct, useCartStore } from "@/lib/cart-store";
 import { useUser } from "@/lib/hooks/use-user";
 import { toast } from "sonner";
 import { MapPin, UserIcon } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
 import Link from "next/link";
 import type { CartItem } from "@/lib/types";
-import { ABABankQRCode } from "@/components/aba-bank-qr";
+import { PaymentModal } from "@/components/payment-modal";
 
 type OrderSnapshot = {
   id: string;
@@ -69,6 +61,19 @@ export default function CheckoutPage() {
   const discount = user?.isPremium ? rawSubtotal * 0.15 : 0;
   const subtotal = Math.max(0, rawSubtotal - discount);
   const shipping = subtotal > 50 ? 0 : 5.99;
+  const checkoutLineItems = useMemo(
+    () =>
+      items.map((item) => {
+        const product = cartItemToProduct(item);
+        return {
+          name: product.name,
+          quantity: item.quantity,
+          price: Number(product.price.toFixed(2)),
+        };
+      }),
+    [items]
+  );
+
   const tax = subtotal * 0.1;
   const total = subtotal + shipping + tax;
 
@@ -154,6 +159,7 @@ export default function CheckoutPage() {
           items: orderItems,
           checkoutData: formData,
           userId: user.id,
+          total: total, // Include full total with shipping, tax, and discounts
         }),
       });
 
@@ -438,75 +444,17 @@ export default function CheckoutPage() {
         </div>
       </main>
 
-      {/* Payment dialog with ABA QR after order creation */}
-      <Dialog open={showPayment} onOpenChange={(open) => setShowPayment(open)}>
-        <DialogContent className="max-w-xl bg-white sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Complete Your Payment</DialogTitle>
-            <DialogDescription>
-              Scan the QR code with the ABA Mobile app to finalize your order.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-5 py-2">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="rounded-lg border border-border/50 bg-muted/40 p-4">
-                <p className="text-sm text-muted-foreground">Order Number</p>
-                <p className="font-mono text-lg font-semibold">
-                  {paymentOrderId || "N/A"}
-                </p>
-              </div>
-
-              <div className="rounded-lg border border-border/50 bg-muted/40 p-4">
-                <p className="text-sm text-muted-foreground">Amount Due</p>
-                <p className="text-2xl font-bold">
-                  ${(paymentAmount ?? total).toFixed(2)}
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-4 rounded-2xl border border-border/40 bg-background p-6">
-              <div className="flex items-center justify-between text-sm text-muted-foreground">
-                <p className="font-medium text-foreground">Scan &amp; Pay</p>
-                <span>ABA PayWay</span>
-              </div>
-              {paymentOrderId && (paymentAmount ?? total) > 0 ? (
-                <ABABankQRCode
-                  amount={paymentAmount ?? total}
-                  orderId={paymentOrderId}
-                  customerName={formData.fullName}
-                  customerEmail={formData.email}
-                  phone={formData.phone}
-                  items={`Order #${paymentOrderId}`}
-                />
-              ) : (
-                <div className="py-4 text-sm text-muted-foreground">
-                  Waiting for order details…
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-1 rounded-lg bg-muted/30 p-4 text-xs text-muted-foreground">
-              <p>
-                Shipping to: {formData.houseNumber} {formData.street},{" "}
-                {formData.project} {formData.remarks}
-              </p>
-              <p>
-                Contact: {formData.fullName} — {formData.phone || "N/A"}
-              </p>
-            </div>
-          </div>
-
-          <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <Button variant="outline" asChild className="w-full sm:w-auto">
-              <Link href="/catalog">Continue Shopping</Link>
-            </Button>
-            <Button asChild className="w-full sm:w-auto">
-              <Link href="/orders">View Orders</Link>
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Payment modal with iframe after order creation */}
+      <PaymentModal
+        isOpen={showPayment}
+        onClose={() => setShowPayment(false)}
+        orderId={paymentOrderId}
+        amount={paymentAmount ?? total}
+        onPaymentComplete={() => {
+          toast.success("Payment completed successfully!");
+          router.push(`/order-confirmation?orderId=${paymentOrderId}`);
+        }}
+      />
 
       <Footer />
     </>
