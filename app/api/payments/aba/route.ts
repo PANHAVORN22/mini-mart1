@@ -1,29 +1,45 @@
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 
 /**
- * Simple proxy route to PayWay Purchase / ABA QR flow.
- * Expects JSON body: { amount, currency, orderId, customerName, customerEmail }
+ * PayWay Purchase API integration route.
+ * Expects JSON body: { amount, currency, orderId, customerName, customerEmail, items }
  * Uses env vars:
- *  - PAYWAY_BASE_URL (e.g. https://sandbox.payway.com.kh)
- *  - PAYWAY_API_KEY (if required)
- *  - PAYWAY_MERCHANT_ID
+ *  - PAYWAY_BASE_URL (e.g. https://sandbox.payway.com.kh or https://api.payway.com.kh)
+ *  - PAYWAY_API_KEY (Required for HMAC hash generation)
+ *  - PAYWAY_MERCHANT_ID (Required)
  *
- * This route attempts to POST to the PayWay purchase endpoint and returns
- * one of:
+ * This route creates a proper PayWay purchase request with:
+ *  - Correct field names as per official API documentation
+ *  - HMAC-SHA512 hash for request security
+ *  - Proper timestamp and transaction ID
+ *
+ * Returns one of:
  *  - { success: true, qrText }
  *  - { success: true, redirectUrl }
  *  - { success: true, html }
  */
+
+/**
+ * Generate HMAC-SHA512 hash for PayWay API request
+ */
+function generateHash(data: string, apiKey: string): string {
+  return crypto.createHmac("sha512", apiKey).update(data).digest("base64");
+}
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
     const {
       amount,
-      currency = "KHR",
+      currency = "USD",
       orderId,
       customerName,
       customerEmail,
+      items = "Order Items",
+      firstName,
+      lastName,
+      phone,
     } = body;
 
     if (!amount || !orderId) {
@@ -33,12 +49,40 @@ export async function POST(req: Request) {
       );
     }
 
+    // Validate environment variables
+    const merchantId = process.env.PAYWAY_MERCHANT_ID;
+    const apiKey = process.env.PAYWAY_API_KEY;
+
+    if (!merchantId && process.env.NODE_ENV !== "development") {
+      return NextResponse.json(
+        { success: false, error: "PAYWAY_MERCHANT_ID not configured" },
+        { status: 500 }
+      );
+    }
+
+    if (!apiKey && process.env.NODE_ENV !== "development") {
+      return NextResponse.json(
+        { success: false, error: "PAYWAY_API_KEY not configured" },
+        { status: 500 }
+      );
+    }
+
     // Development/Mock mode - return HTML form that posts to ABA PayWay
     if (process.env.NODE_ENV === "development" || process.env.ABA_MOCK_MODE === "true") {
       console.log("ABA Mock Mode: Creating form to submit to ABA PayWay checkout");
       
       // Create HTML form that auto-submits to ABA PayWay
       const returnUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/order-confirmation?orderId=${orderId}&amount=${amount}`;
+      const reqTime = Math.floor(Date.now() / 1000);
+      const tranId = `${orderId}-${reqTime}`;
+      
+      // For mock mode, use demo values
+      const mockMerchantId = merchantId || 'DEMO_MERCHANT';
+      const mockApiKey = apiKey || 'demo_api_key';
+      
+      // Build hash string according to PayWay documentation
+      const hashString = `${reqTime}${mockMerchantId}${tranId}${amount}${items}${returnUrl}`;
+      const hash = generateHash(hashString, mockApiKey);
       
       const htmlForm = `
 <!DOCTYPE html>
@@ -57,13 +101,17 @@ export async function POST(req: Request) {
     <p>Please wait while we redirect you to complete your payment.</p>
     
     <form id="abaForm" action="https://sandbox.payway.com.kh/api/payment-gateway/v1/payments/purchase" method="POST">
+        <input type="hidden" name="req_time" value="${reqTime}" />
+        <input type="hidden" name="merchant_id" value="${mockMerchantId}" />
+        <input type="hidden" name="tran_id" value="${tranId}" />
         <input type="hidden" name="amount" value="${amount}" />
-        <input type="hidden" name="currency" value="${currency}" />
-        <input type="hidden" name="invoice_id" value="${orderId}" />
-        <input type="hidden" name="customer_name" value="${customerName || ''}" />
-        <input type="hidden" name="customer_email" value="${customerEmail || ''}" />
+        <input type="hidden" name="items" value="${items}" />
         <input type="hidden" name="return_url" value="${returnUrl}" />
-        <input type="hidden" name="merchant_id" value="${process.env.PAYWAY_MERCHANT_ID || 'DEMO_MERCHANT'}" />
+        <input type="hidden" name="hash" value="${hash}" />
+        ${firstName ? `<input type="hidden" name="first_name" value="${firstName}" />` : ''}
+        ${lastName ? `<input type="hidden" name="last_name" value="${lastName}" />` : ''}
+        ${phone ? `<input type="hidden" name="phone" value="${phone}" />` : ''}
+        ${customerEmail ? `<input type="hidden" name="email" value="${customerEmail}" />` : ''}
     </form>
     
     <script>
@@ -79,36 +127,56 @@ export async function POST(req: Request) {
         success: true,
         html: htmlForm,
         mock: true,
-        message: "Development mode - submitting to ABA PayWay"
+        message: "Development mode - submitting to ABA PayWay with correct API format"
       });
     }
 
     const base = process.env.PAYWAY_BASE_URL || "https://sandbox.payway.com.kh";
     const endpoint = `${base}/api/payment-gateway/v1/payments/purchase`;
 
-    // Build form data. Exact field names depend on PayWay API; we provide a best-effort mapping
-    const form = new FormData();
-    form.append("amount", String(amount));
-    form.append("currency", currency);
-    form.append("invoice_id", String(orderId));
-    if (process.env.PAYWAY_MERCHANT_ID)
-      form.append("merchant_id", process.env.PAYWAY_MERCHANT_ID);
-    if (customerName) form.append("customer_name", customerName);
-    if (customerEmail) form.append("customer_email", customerEmail);
+    // Generate required PayWay fields according to official documentation
+    const reqTime = Math.floor(Date.now() / 1000);
+    const tranId = `${orderId}-${reqTime}`;
+    const returnUrl = process.env.PAYWAY_RETURN_URL || 
+                     `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/order-confirmation`;
+    
+    // Build hash string: req_time + merchant_id + tran_id + amount + items + return_url
+    const hashString = `${reqTime}${merchantId}${tranId}${amount}${items}${returnUrl}`;
+    const hash = generateHash(hashString, apiKey!);
 
-    // Optional return URL so PayWay can redirect after payment
-    if (process.env.PAYWAY_RETURN_URL)
-      form.append("return_url", process.env.PAYWAY_RETURN_URL);
+    // Build request payload with correct PayWay field names
+    const payload: Record<string, string | number> = {
+      req_time: reqTime,
+      merchant_id: merchantId!,
+      tran_id: tranId,
+      amount: Number(amount),
+      items: items,
+      return_url: returnUrl,
+      hash: hash,
+    };
 
-    const headers: Record<string, string> = {};
-    if (process.env.PAYWAY_API_KEY) {
-      headers["Authorization"] = `Bearer ${process.env.PAYWAY_API_KEY}`;
-    }
+    // Add optional fields if provided
+    if (firstName) payload.first_name = firstName;
+    if (lastName) payload.last_name = lastName;
+    if (phone) payload.phone = phone;
+    if (customerEmail) payload.email = customerEmail;
+
+    console.log("PayWay API Request:", {
+      endpoint,
+      merchant_id: merchantId,
+      tran_id: tranId,
+      amount,
+      items,
+      req_time: reqTime,
+      hasHash: !!hash,
+    });
 
     const resp = await fetch(endpoint, {
       method: "POST",
-      headers,
-      body: form as any,
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
     });
 
     const contentType = resp.headers.get("content-type") || "";

@@ -10,14 +10,18 @@ interface Props {
   orderId: string;
   customerName?: string;
   customerEmail?: string;
+  phone?: string;
+  items?: string;
 }
 
 export function ABABankQRCode({
   amount,
-  currency = "KHR",
+  currency = "USD",
   orderId,
   customerName,
   customerEmail,
+  phone,
+  items = "Order Items",
 }: Props) {
   const [loading, setLoading] = useState(false);
   const [qrData, setQrData] = useState<string | null>(null);
@@ -35,6 +39,11 @@ export function ABABankQRCode({
     setQrData(null);
 
     try {
+      // Split name into first and last name for PayWay API
+      const nameParts = (customerName || "").trim().split(/\s+/);
+      const firstName = nameParts[0] || "";
+      const lastName = nameParts.slice(1).join(" ") || "";
+
       const res = await fetch("/api/payments/aba", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -42,8 +51,11 @@ export function ABABankQRCode({
           amount,
           currency,
           orderId,
-          customerName,
+          firstName,
+          lastName,
           customerEmail,
+          phone,
+          items,
         }),
       });
 
@@ -85,7 +97,7 @@ export function ABABankQRCode({
     } finally {
       setLoading(false);
     }
-  }, [amount, currency, orderId, customerName, customerEmail]);
+  }, [amount, currency, orderId, customerName, customerEmail, phone, items]);
 
   useEffect(() => {
     void createQr();
