@@ -12,7 +12,15 @@ interface Props {
   customerEmail?: string;
   phone?: string;
   items?: string;
+  shipping?: number;
+  lineItems?: PayWayLineItem[];
 }
+
+type PayWayLineItem = {
+  name: string;
+  quantity: number;
+  price: number;
+};
 
 export function ABABankQRCode({
   amount,
@@ -22,6 +30,8 @@ export function ABABankQRCode({
   customerEmail,
   phone,
   items = "Order Items",
+  shipping = 0,
+  lineItems,
 }: Props) {
   const [loading, setLoading] = useState(false);
   const [qrData, setQrData] = useState<string | null>(null);
@@ -56,10 +66,13 @@ export function ABABankQRCode({
           customerEmail,
           phone,
           items,
+          shipping,
+          lineItems,
         }),
       });
 
       const json = await res.json();
+      console.log("ABA QR response:", json);
 
       if (!res.ok || json?.success === false) {
         setError(json?.error || "Failed to create ABA QR");
@@ -97,7 +110,7 @@ export function ABABankQRCode({
     } finally {
       setLoading(false);
     }
-  }, [amount, currency, orderId, customerName, customerEmail, phone, items]);
+  }, [amount, currency, orderId, customerName, customerEmail, phone, items, shipping, lineItems]);
 
   useEffect(() => {
     void createQr();

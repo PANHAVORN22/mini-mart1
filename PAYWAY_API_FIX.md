@@ -12,32 +12,39 @@ This document describes the fixes applied to the PayWay (ABA Bank) payment integ
 
 **After (Correct):**
 - `tran_id` - Transaction ID (unique identifier)
-- `first_name`, `last_name` - Customer name split
+- `firstname`, `lastname` - Customer name split (matching PayWay casing)
 - `email`, `phone` - Customer contact details
-- `items` - Description of items being purchased
+- `items` - Base64-encoded JSON array of line items
 
 ### 2. Missing Required Fields
 The following required fields were not being sent:
-- `req_time` - Unix timestamp (seconds since epoch)
-- `tran_id` - Unique transaction identifier
-- `items` - Description of purchase items
-- `hash` - HMAC-SHA512 security signature
+- `req_time` - UTC timestamp formatted as `YYYYMMDDHHmmss`
+- `shipping` - Monetary value (even `0.00` must be included in hash)
+- `items` - Base64-encoded JSON (`[{ "name": "...", "quantity": 1, "price": 1.0 }]`)
+- `hash` - HMAC-SHA512 security signature over the entire field list
 
 ### 3. Missing Security Implementation
-**Critical Issue:** No HMAC hash generation for request authentication.
+**Critical Issue:** Hash previously used only a subset of fields.
 
-**Fix:** Implemented proper HMAC-SHA512 hash calculation:
+**Fix:** Implemented proper HMAC-SHA512 hash calculation using the documented concatenation order:
 ```
-hash = HMAC-SHA512(req_time + merchant_id + tran_id + amount + items + return_url, api_key)
+const concatenated = [
+  req_time, merchant_id, tran_id, amount, items, shipping,
+  firstname, lastname, email, phone, type, payment_option,
+  return_url, cancel_url, continue_success_url, return_deeplink,
+  currency, custom_fields, return_params, payout, lifetime,
+  additional_params, google_pay_token, skip_success_page
+].join("");
+hash = HMAC-SHA512(concatenated, api_key);
 ```
 
 ### 4. Incorrect Request Format
-**Before:** Using `FormData` for POST requests
-**After:** Using JSON payload with `Content-Type: application/json`
+**Before:** Sending JSON payload to `https://sandbox.payway.com.kh`
+**After:** Sending `multipart/form-data` to the checkout endpoint (`https://checkout-sandbox.payway.com.kh/api/payment-gateway/v1/payments/purchase`)
 
 ### 5. Currency Default
 **Before:** Defaulting to "KHR" (Cambodian Riel)
-**After:** Defaulting to "USD" (US Dollar) as per PayWay documentation
+**After:** Defaulting to "USD" (US Dollar) unless the merchant profile overrides it
 
 ## Changes Made
 
@@ -95,36 +102,36 @@ NODE_ENV=development
 ## API Request Format (Corrected)
 
 ### Request Payload
-```json
-{
-  "req_time": 1700000000,
-  "merchant_id": "YOUR_MERCHANT_ID",
-  "tran_id": "ORDER123-1700000000",
-  "amount": 100.00,
-  "items": "Order #ORDER123",
-  "return_url": "https://yourdomain.com/order-confirmation",
-  "hash": "BASE64_ENCODED_HMAC_SHA512_HASH",
-  "first_name": "John",
-  "last_name": "Doe",
-  "email": "john.doe@example.com",
-  "phone": "+855123456789"
-}
-```
+Submit as `multipart/form-data` (order matters for hashing, not for POST):
 
-### Hash Calculation
-```typescript
-const hashString = `${req_time}${merchant_id}${tran_id}${amount}${items}${return_url}`;
-const hash = crypto.createHmac('sha512', api_key).update(hashString).digest('base64');
-```
+- `req_time` – `20251120094530`
+- `merchant_id` – `YOUR_MERCHANT_ID`
+- `tran_id` – `ORDER123-20251120094530`
+- `amount` – `100.00`
+- `items` – `base64('[{"name":"Order #ORDER123","quantity":1,"price":100}]')`
+- `shipping` – `0.00`
+- `firstname` / `lastname`
+- `email` / `phone`
+- `type` – `purchase`
+- `payment_option` – leave blank to let PayWay decide
+- `return_url`, `cancel_url`, `continue_success_url`
+- `currency` – `USD`
+- `custom_fields`, `return_params` – base64 metadata (order id, etc.)
+- `payout`, `additional_params`, `google_pay_token` – blank if unused
+- `lifetime` – `30`
+- `skip_success_page` – `0`
+- `payment_gate` – `0`
+- `view_type` – `popup`
+- `hash` – calculated HMAC
 
 ## Testing
 
 ### Development Mode
 When `NODE_ENV=development` or `ABA_MOCK_MODE=true`:
-- Creates an HTML form with correct PayWay fields
-- Auto-submits to PayWay sandbox for testing
+- Creates an HTML form with the complete PayWay field list (matching production)
+- Auto-submits to the sandbox checkout endpoint
 - Uses demo credentials if environment variables are missing
-- Generates proper HMAC hash for validation
+- Generates the full HMAC hash for validation
 
 ### Production Mode
 Requires:
@@ -161,5 +168,5 @@ This implementation now fully complies with:
 - ✅ PayWay API v1 Purchase specification
 - ✅ HMAC-SHA512 security requirements
 - ✅ Required field validation
-- ✅ Proper request format (JSON)
+- ✅ Proper request format (multipart/form-data)
 - ✅ Correct endpoint usage
