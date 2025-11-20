@@ -1,0 +1,212 @@
+-- Ensure the order workflow works with the unified products catalog.
+-- 1) Point order_items.beer_id at public.products(id)
+-- 2) Refresh create_order_transaction so stock checks no longer fail
+--    for non-beer categories.
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.tables
+    WHERE table_schema = 'public'
+      AND table_name = 'products'
+  ) THEN
+    BEGIN
+      EXECUTE 'ALTER TABLE public.order_items DROP CONSTRAINT IF EXISTS order_items_beer_id_fkey';
+    EXCEPTION
+      WHEN undefined_object THEN NULL;
+    END;
+
+    EXECUTE 'ALTER TABLE public.order_items
+      ADD CONSTRAINT order_items_beer_id_fkey
+      FOREIGN KEY (beer_id)
+      REFERENCES public.products(id)
+      ON DELETE SET NULL';
+  END IF;
+END $$;
+
+CREATE OR REPLACE FUNCTION public.create_order_transaction(
+  p_user_id uuid,
+  p_items jsonb,
+  p_checkout jsonb
+)
+RETURNS TABLE(success boolean, order_id uuid, error_text text)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_total numeric := 0;
+  v_order_id uuid;
+  v_item jsonb;
+  v_product_id uuid;
+  v_qty int;
+  v_price numeric;
+  v_stock int;
+  v_product_name text;
+  v_product_source text;
+  v_category text;
+  v_insufficient jsonb := '[]'::jsonb;
+  v_product_sources jsonb := '{}'::jsonb;
+  v_product_categories jsonb := '{}'::jsonb;
+BEGIN
+  IF p_user_id IS NULL OR p_user_id <> auth.uid() THEN
+    RAISE EXCEPTION 'Caller does not match authenticated user';
+  END IF;
+
+  FOR v_item IN SELECT * FROM jsonb_array_elements(p_items) LOOP
+    v_product_id := (v_item->>'beerId')::uuid;
+    v_qty := COALESCE((v_item->>'quantity')::int, 0);
+    v_price := (v_item->>'price')::numeric;
+
+    v_product_name := NULL;
+    v_product_source := NULL;
+    v_category := NULL;
+
+    IF v_product_id IS NULL THEN
+      v_insufficient := v_insufficient || jsonb_build_object(
+        'beerId', NULL,
+        'name', 'Unknown product',
+        'available', 0,
+        'requested', v_qty
+      );
+      CONTINUE;
+    END IF;
+
+    SELECT stock, name, category
+      INTO v_stock, v_product_name, v_category
+    FROM products
+    WHERE id = v_product_id
+    FOR UPDATE;
+
+    IF FOUND THEN
+      v_product_source := 'products';
+    ELSE
+      SELECT stock, name, 'beer'
+        INTO v_stock, v_product_name, v_category
+      FROM beers
+      WHERE id = v_product_id
+      FOR UPDATE;
+
+      IF FOUND THEN
+        v_product_source := 'beers';
+      END IF;
+    END IF;
+
+    IF v_product_source IS NULL THEN
+      v_insufficient := v_insufficient || jsonb_build_object(
+        'beerId', v_product_id,
+        'name', COALESCE(v_product_name, COALESCE(v_product_id::text, 'Unknown product')),
+        'available', 0,
+        'requested', v_qty
+      );
+    ELSE
+      IF COALESCE(v_stock, 0) < v_qty THEN
+        v_insufficient := v_insufficient || jsonb_build_object(
+          'beerId', v_product_id,
+          'name', COALESCE(v_product_name, v_product_id::text),
+          'available', COALESCE(v_stock, 0),
+          'requested', v_qty
+        );
+      END IF;
+
+      v_product_sources := v_product_sources || jsonb_build_object(
+        v_product_id::text,
+        v_product_source
+      );
+
+      v_product_categories := v_product_categories || jsonb_build_object(
+        v_product_id::text,
+        COALESCE(v_category, 'beer')
+      );
+    END IF;
+
+    v_total := v_total + (v_price * v_qty);
+  END LOOP;
+
+  IF jsonb_array_length(v_insufficient) > 0 THEN
+    success := false;
+    order_id := NULL;
+    error_text := jsonb_to_json(v_insufficient)::text;
+    RETURN NEXT;
+    RETURN;
+  END IF;
+
+  INSERT INTO orders (user_id, status, total, shipping_address, contact_info)
+  VALUES (
+    p_user_id,
+    'pending',
+    v_total,
+    jsonb_build_object(
+      'houseNumber', p_checkout->>'houseNumber',
+      'street', p_checkout->>'street',
+      'city', p_checkout->>'city',
+      'zipCode', p_checkout->>'zipCode'
+    ),
+    jsonb_build_object(
+      'fullName', p_checkout->>'fullName',
+      'email', p_checkout->>'email',
+      'phone', p_checkout->>'phone'
+    )
+  )
+  RETURNING id INTO v_order_id;
+
+  FOR v_item IN SELECT * FROM jsonb_array_elements(p_items) LOOP
+    v_product_id := (v_item->>'beerId')::uuid;
+    v_qty := COALESCE((v_item->>'quantity')::int, 0);
+    v_price := (v_item->>'price')::numeric;
+    v_product_source := v_product_sources->>v_product_id::text;
+    v_category := v_product_categories->>v_product_id::text;
+
+    INSERT INTO order_items (order_id, beer_id, quantity, price)
+    VALUES (v_order_id, v_product_id, v_qty, v_price);
+
+    IF v_product_source = 'products' THEN
+      UPDATE products
+      SET stock = stock - v_qty
+      WHERE id = v_product_id;
+
+      IF v_category = 'beer' THEN
+        UPDATE beers
+        SET stock = stock - v_qty
+        WHERE id = v_product_id;
+      END IF;
+    ELSIF v_product_source = 'beers' THEN
+      UPDATE beers
+      SET stock = stock - v_qty
+      WHERE id = v_product_id;
+    END IF;
+  END LOOP;
+
+  INSERT INTO notifications (user_id, order_id, type, message, metadata)
+  VALUES (
+    p_user_id,
+    v_order_id,
+    'new_order',
+    format('New order %s placed', v_order_id),
+    jsonb_build_object(
+      'shippingAddress', jsonb_build_object(
+        'houseNumber', p_checkout->>'houseNumber',
+        'street', p_checkout->>'street',
+        'city', p_checkout->>'city',
+        'zipCode', p_checkout->>'zipCode'
+      ),
+      'contactInfo', jsonb_build_object(
+        'fullName', p_checkout->>'fullName',
+        'email', p_checkout->>'email',
+        'phone', p_checkout->>'phone'
+      ),
+      'total', v_total,
+      'itemCount', jsonb_array_length(p_items)
+    )
+  );
+
+  success := true;
+  order_id := v_order_id;
+  error_text := NULL;
+  RETURN NEXT;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.create_order_transaction(uuid, jsonb, jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.create_order_transaction(uuid, jsonb, jsonb) TO service_role;

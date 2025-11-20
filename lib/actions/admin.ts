@@ -24,6 +24,213 @@ export interface AdminProductsResult {
   status?: number;
 }
 
+type ProductPayload = {
+  name?: string;
+  brand?: string | null;
+  category?: string;
+  type?: string | null;
+  description?: string | null;
+  price?: number | string;
+  stock?: number | string;
+  image_url?: string | null;
+  is_premium?: boolean;
+  alcohol_content?: number | string | null;
+  volume?: number | string | null;
+  caffeine?: number | string | null;
+  expiry_date?: string | null;
+  barcode?: string | null;
+  supplier?: string | null;
+  cost_price?: number | string | null;
+};
+
+const toNullableString = (value: unknown) => {
+  if (value === null || value === undefined) return null;
+  const str = String(value).trim();
+  return str.length > 0 ? str : null;
+};
+
+const normalizeOptionalNumber = (
+  value: unknown,
+  fieldLabel: string
+): { ok: true; value: number | null } | { ok: false; error: string } => {
+  if (value === undefined || value === null || value === "") {
+    return { ok: true, value: null };
+  }
+
+  const num = Number(value);
+  if (!Number.isFinite(num)) {
+    return { ok: false, error: `${fieldLabel} must be a valid number` };
+  }
+
+  return { ok: true, value: num };
+};
+
+const normalizeProductInsert = (
+  data: ProductPayload
+): { error: string; status?: number } | { record: Record<string, unknown> } => {
+  const name = toNullableString(data.name);
+  if (!name) {
+    return { error: "Product name is required", status: 400 };
+  }
+
+  const category = toNullableString(data.category);
+  if (!category) {
+    return { error: "Product category is required", status: 400 };
+  }
+
+  const rawType = toNullableString(data.type);
+  const price = Number(data.price);
+  if (!Number.isFinite(price)) {
+    return { error: "Price must be a valid number", status: 400 };
+  }
+
+  const stockValue = Number(data.stock);
+  if (!Number.isFinite(stockValue)) {
+    return { error: "Stock must be a valid number", status: 400 };
+  }
+
+  const alcohol = normalizeOptionalNumber(
+    data.alcohol_content,
+    "Alcohol content"
+  );
+  if (!alcohol.ok) return alcohol;
+
+  const volume = normalizeOptionalNumber(data.volume, "Volume");
+  if (!volume.ok) return volume;
+
+  const caffeine = normalizeOptionalNumber(data.caffeine, "Caffeine");
+  if (!caffeine.ok) return caffeine;
+
+  const costPrice = normalizeOptionalNumber(data.cost_price, "Cost price");
+  if (!costPrice.ok) return costPrice;
+
+  const record = {
+    name,
+    brand: toNullableString(data.brand) ?? name.split(" ")[0] ?? null,
+    category,
+    type: rawType ?? "other",
+    description: toNullableString(data.description),
+    price,
+    stock: Math.trunc(stockValue),
+    image_url: toNullableString(data.image_url),
+    is_premium: Boolean(data.is_premium),
+    alcohol_content: alcohol.value,
+    volume: volume.value,
+    caffeine: caffeine.value,
+    expiry_date: toNullableString(data.expiry_date),
+    barcode: toNullableString(data.barcode),
+    supplier: toNullableString(data.supplier),
+    cost_price: costPrice.value,
+  };
+
+  return { record };
+};
+
+const normalizeProductUpdate = (
+  data: ProductPayload
+): { error: string; status?: number } | { record: Record<string, unknown> } => {
+  const record: Record<string, unknown> = {};
+
+  if ("name" in data) {
+    const name = toNullableString(data.name);
+    if (!name) {
+      return { error: "Product name cannot be empty", status: 400 };
+    }
+    record.name = name;
+  }
+
+  if ("brand" in data) {
+    record.brand = toNullableString(data.brand);
+  }
+
+  if ("category" in data) {
+    const category = toNullableString(data.category);
+    if (!category) {
+      return { error: "Product category cannot be empty", status: 400 };
+    }
+    record.category = category;
+  }
+
+  if ("type" in data) {
+    const type = toNullableString(data.type) ?? "other";
+    record.type = type;
+  }
+
+  if ("description" in data) {
+    record.description = toNullableString(data.description);
+  }
+
+  if ("price" in data) {
+    const price = Number(data.price);
+    if (!Number.isFinite(price)) {
+      return { error: "Price must be a valid number", status: 400 };
+    }
+    record.price = price;
+  }
+
+  if ("stock" in data) {
+    const stockValue = Number(data.stock);
+    if (!Number.isFinite(stockValue)) {
+      return { error: "Stock must be a valid number", status: 400 };
+    }
+    record.stock = Math.trunc(stockValue);
+  }
+
+  if ("image_url" in data) {
+    record.image_url = toNullableString(data.image_url);
+  }
+
+  if ("is_premium" in data) {
+    record.is_premium = Boolean(data.is_premium);
+  }
+
+  if ("alcohol_content" in data) {
+    const value = normalizeOptionalNumber(
+      data.alcohol_content,
+      "Alcohol content"
+    );
+    if (!value.ok) return value;
+    record.alcohol_content = value.value;
+  }
+
+  if ("volume" in data) {
+    const value = normalizeOptionalNumber(data.volume, "Volume");
+    if (!value.ok) return value;
+    record.volume = value.value;
+  }
+
+  if ("caffeine" in data) {
+    const value = normalizeOptionalNumber(data.caffeine, "Caffeine");
+    if (!value.ok) return value;
+    record.caffeine = value.value;
+  }
+
+  if ("expiry_date" in data) {
+    record.expiry_date = toNullableString(data.expiry_date);
+  }
+
+  if ("barcode" in data) {
+    record.barcode = toNullableString(data.barcode);
+  }
+
+  if ("supplier" in data) {
+    record.supplier = toNullableString(data.supplier);
+  }
+
+  if ("cost_price" in data) {
+    const value = normalizeOptionalNumber(data.cost_price, "Cost price");
+    if (!value.ok) return value;
+    record.cost_price = value.value;
+  }
+
+  if (Object.keys(record).length === 0) {
+    return { error: "No product fields provided", status: 400 };
+  }
+
+  record.updated_at = new Date().toISOString();
+  return { record };
+};
+
 type SupabaseServerClient = Awaited<ReturnType<typeof getSupabaseServerClient>>;
 type SupabaseUser = NonNullable<
   Awaited<ReturnType<SupabaseServerClient["auth"]["getUser"]>>["data"]["user"]
@@ -227,6 +434,108 @@ export async function getAdminProducts(): Promise<AdminProductsResult> {
       status: 500,
     };
   }
+}
+
+export async function createProduct(data: ProductPayload) {
+  const context = await resolveAdminAccess();
+  if ("error" in context) {
+    return {
+      success: false,
+      error: context.error.message,
+      status: context.error.status,
+    };
+  }
+
+  const normalized = normalizeProductInsert(data);
+  if ("error" in normalized) {
+    return {
+      success: false,
+      error: normalized.error,
+      status: normalized.status ?? 400,
+    };
+  }
+
+  const { service } = context;
+  const { data: inserted, error } = await service
+    .from("products")
+    .insert(normalized.record)
+    .select("*")
+    .single();
+
+  if (error) {
+    console.error("Error creating product:", error);
+    return { success: false, error: error.message, status: 500 };
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/catalog");
+  return { success: true, product: inserted };
+}
+
+export async function updateProduct(productId: string, data: ProductPayload) {
+  if (!productId) {
+    return { success: false, error: "Missing product id", status: 400 };
+  }
+
+  const context = await resolveAdminAccess();
+  if ("error" in context) {
+    return {
+      success: false,
+      error: context.error.message,
+      status: context.error.status,
+    };
+  }
+
+  const normalized = normalizeProductUpdate(data);
+  if ("error" in normalized) {
+    return {
+      success: false,
+      error: normalized.error,
+      status: normalized.status ?? 400,
+    };
+  }
+
+  const { service } = context;
+  const { error } = await service
+    .from("products")
+    .update(normalized.record)
+    .eq("id", productId);
+
+  if (error) {
+    console.error("Error updating product:", error);
+    return { success: false, error: error.message, status: 500 };
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/catalog");
+  return { success: true };
+}
+
+export async function deleteProduct(productId: string) {
+  if (!productId) {
+    return { success: false, error: "Missing product id", status: 400 };
+  }
+
+  const context = await resolveAdminAccess();
+  if ("error" in context) {
+    return {
+      success: false,
+      error: context.error.message,
+      status: context.error.status,
+    };
+  }
+
+  const { service } = context;
+  const { error } = await service.from("products").delete().eq("id", productId);
+
+  if (error) {
+    console.error("Error deleting product:", error);
+    return { success: false, error: error.message, status: 500 };
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/catalog");
+  return { success: true };
 }
 
 export async function getPremiumEventsForAdmin(): Promise<AdminPremiumEventsResult> {

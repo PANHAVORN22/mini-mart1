@@ -711,46 +711,67 @@ export function UnifiedProductManagement({
   };
 
   const uploadImage = async (file: File): Promise<string | null> => {
+    setIsUploading(true);
+    setUploadProgress(0);
+
     try {
-      setIsUploading(true);
-      setUploadProgress(20);
-
       const compressedFile = await compressImage(file);
-      setUploadProgress(50);
-
-      const supabase = getSupabaseBrowserClient();
-      const extension = compressedFile.name.split(".").pop() || "jpg";
-      const filePath = `premium-assets/${Date.now()}-${Math.random()
+      const extension =
+        compressedFile.name.split(".").pop() ||
+        file.name.split(".").pop() ||
+        "jpg";
+      const filename = `product-${Date.now()}-${Math.random()
         .toString(36)
         .slice(2)}.${extension}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from("beer-images")
-        .upload(filePath, compressedFile, {
-          cacheControl: "3600",
-          contentType: compressedFile.type || "image/jpeg",
-          upsert: false,
-        });
+      const uploadUrl = await new Promise<string>((resolve, reject) => {
+        const formData = new FormData();
+        formData.append("file", compressedFile, filename);
+        formData.append("filename", filename);
 
-      if (uploadError) {
-        throw new Error(uploadError.message || "Upload failed");
-      }
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "/api/admin/upload-url");
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            const pct = Math.round((event.loaded / event.total) * 100);
+            setUploadProgress(pct);
+          }
+        };
+        xhr.onerror = () => reject(new Error("Image upload network error"));
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const json = JSON.parse(xhr.responseText || "{}");
+              if (json?.publicUrl) {
+                resolve(json.publicUrl as string);
+              } else {
+                reject(new Error("Upload succeeded without a public URL"));
+              }
+            } catch {
+              reject(new Error("Invalid response from upload endpoint"));
+            }
+          } else {
+            reject(
+              new Error(
+                `Upload failed (${xhr.status}): ${xhr.responseText || ""}`
+              )
+            );
+          }
+        };
+        xhr.send(formData);
+      });
 
-      setUploadProgress(90);
-
-      const { data } = supabase.storage
-        .from("beer-images")
-        .getPublicUrl(filePath);
       setUploadProgress(100);
-
-      return data.publicUrl;
+      return uploadUrl;
     } catch (error) {
       console.error("Error uploading image:", error);
-      toast.error("Failed to upload image");
+      toast.error(
+        error instanceof Error ? error.message : "Failed to upload image"
+      );
       return null;
     } finally {
       setIsUploading(false);
-      setTimeout(() => setUploadProgress(0), 1000);
+      setTimeout(() => setUploadProgress(0), 800);
     }
   };
 
@@ -916,46 +937,53 @@ export function UnifiedProductManagement({
     setIsSaving(true);
 
     try {
-      let imageUrl = "";
+      let imageUrl: string | null = null;
       if (newProduct.image) {
         const uploadedUrl = await uploadImage(newProduct.image);
-        if (uploadedUrl) {
-          imageUrl = uploadedUrl;
+        if (!uploadedUrl) {
+          return;
         }
+        imageUrl = uploadedUrl;
       }
 
-      const supabase = getSupabaseBrowserClient();
-      const { error } = await supabase.from("products").insert({
-        name: newProduct.name,
-        brand: newProduct.brand || newProduct.name.split(" ")[0],
-        category: newProduct.category,
-        type: newProduct.type || "other",
-        description: newProduct.description,
-        price: parseFloat(newProduct.price),
-        stock: parseInt(newProduct.stock),
-        image_url: imageUrl,
-        is_premium: newProduct.is_premium,
-        alcohol_content: newProduct.alcohol_content
-          ? parseFloat(newProduct.alcohol_content)
-          : null,
-        volume: newProduct.volume ? parseInt(newProduct.volume) : null,
-        caffeine: newProduct.caffeine ? parseInt(newProduct.caffeine) : null,
-        expiry_date: newProduct.expiry_date || null,
-        barcode: newProduct.barcode || null,
-        supplier: newProduct.supplier || null,
-        cost_price: newProduct.cost_price
-          ? parseFloat(newProduct.cost_price)
-          : null,
+      const response = await fetch("/api/admin/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          name: newProduct.name,
+          brand: newProduct.brand,
+          category: newProduct.category,
+          type: newProduct.type || "other",
+          description: newProduct.description,
+          price: newProduct.price,
+          stock: newProduct.stock,
+          image_url: imageUrl,
+          is_premium: newProduct.is_premium,
+          alcohol_content: newProduct.alcohol_content,
+          volume: newProduct.volume,
+          caffeine: newProduct.caffeine,
+          expiry_date: newProduct.expiry_date,
+          barcode: newProduct.barcode,
+          supplier: newProduct.supplier,
+          cost_price: newProduct.cost_price,
+        }),
       });
 
-      if (error) {
-        console.error("Error adding product:", error);
-        toast.error("Failed to add product");
+      let payload: { success?: boolean; error?: string } | null = null;
+      try {
+        payload = await response.json();
+      } catch {}
+
+      if (!response.ok || !payload?.success) {
+        const message = payload?.error || "Failed to add product";
+        console.error("Error adding product:", message);
+        toast.error(message);
         return;
       }
 
       toast.success("Product added successfully!");
-      fetchProducts();
+      await fetchProducts();
       setIsDialogOpen(false);
       setNewProduct(initialFormState);
       setImagePreview(null);
@@ -987,20 +1015,27 @@ export function UnifiedProductManagement({
     }
 
     try {
-      const supabase = getSupabaseBrowserClient();
-      const { error } = await supabase
-        .from("products")
-        .delete()
-        .eq("id", productId);
+      const response = await fetch("/api/admin/products", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ id: productId }),
+      });
 
-      if (error) {
-        console.error("Error deleting product:", error);
-        toast.error("Failed to delete product");
+      let payload: { success?: boolean; error?: string } | null = null;
+      try {
+        payload = await response.json();
+      } catch {}
+
+      if (!response.ok || !payload?.success) {
+        const message = payload?.error || "Failed to delete product";
+        console.error("Error deleting product:", message);
+        toast.error(message);
         return;
       }
 
       toast.success("Product deleted successfully!");
-      fetchProducts();
+      await fetchProducts();
     } catch (error) {
       console.error("Error deleting product:", error);
       toast.error("Failed to delete product");

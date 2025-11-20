@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS public.orders (
 CREATE TABLE IF NOT EXISTS public.order_items (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   order_id UUID REFERENCES public.orders(id) ON DELETE CASCADE,
-  beer_id UUID REFERENCES public.beers(id) ON DELETE SET NULL,
+  beer_id UUID REFERENCES public.products(id) ON DELETE SET NULL,
   quantity INTEGER NOT NULL,
   price DECIMAL(10, 2) NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()

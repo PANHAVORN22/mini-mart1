@@ -19,7 +19,13 @@ import { cn } from "@/lib/utils";
 
 const SUPABASE_FETCH_TIMEOUT_MS = 8000;
 
-function AnimatedProductCard({ product }: { product: Product }) {
+function AnimatedProductCard({
+  product,
+  className,
+}: {
+  product: Product;
+  className?: string;
+}) {
   const [isVisible, setIsVisible] = useState(false);
   const cardRef = useRef<HTMLDivElement | null>(null);
 
@@ -47,8 +53,9 @@ function AnimatedProductCard({ product }: { product: Product }) {
       ref={cardRef}
       data-item
       className={cn(
-        "w-56 sm:w-60 lg:w-64 shrink-0 snap-start transition-all duration-500 ease-out will-change-transform",
-        isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
+        "w-full transition-all duration-500 ease-out will-change-transform",
+        isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4",
+        className
       )}
     >
       <div className="group h-full transition-transform duration-300 hover:-translate-y-2">
@@ -57,6 +64,191 @@ function AnimatedProductCard({ product }: { product: Product }) {
     </div>
   );
 }
+
+function ScrollableProductRow({
+  products,
+  label,
+}: {
+  products: Product[];
+  label: string;
+}) {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [canScrollPrev, setCanScrollPrev] = useState(false);
+  const [canScrollNext, setCanScrollNext] = useState(false);
+  const [hasOverflow, setHasOverflow] = useState(false);
+  const dragStateRef = useRef({
+    pointerId: -1,
+    startX: 0,
+    scrollLeft: 0,
+    hasMoved: false,
+  });
+  const isDraggingRef = useRef(false);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const updateScrollState = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const tolerance = 8;
+    setCanScrollPrev(el.scrollLeft > tolerance);
+    setCanScrollNext(
+      el.scrollLeft + el.clientWidth < el.scrollWidth - tolerance
+    );
+    setHasOverflow(el.scrollWidth - el.clientWidth > tolerance);
+  }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    updateScrollState();
+    const handleScroll = () => updateScrollState();
+    el.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("resize", handleScroll);
+    return () => {
+      el.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("resize", handleScroll);
+    };
+  }, [updateScrollState]);
+
+  useEffect(() => {
+    updateScrollState();
+  }, [products.length, updateScrollState]);
+
+  const scrollByPage = useCallback((direction: "left" | "right") => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const amount = Math.max(el.clientWidth * 0.85, 240);
+    el.scrollBy({
+      left: direction === "left" ? -amount : amount,
+      behavior: "smooth",
+    });
+  }, []);
+
+  const endDrag = useCallback(() => {
+    if (!isDraggingRef.current) return;
+    const el = scrollRef.current;
+    if (el && dragStateRef.current.pointerId !== -1) {
+      try {
+        el.releasePointerCapture(dragStateRef.current.pointerId);
+      } catch (error) {
+        console.warn("Unable to release pointer capture", error);
+      }
+    }
+    isDraggingRef.current = false;
+    dragStateRef.current = {
+      pointerId: -1,
+      startX: 0,
+      scrollLeft: 0,
+      hasMoved: false,
+    };
+    setIsDragging(false);
+  }, []);
+
+  const handlePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const el = scrollRef.current;
+      if (!el) return;
+      if (event.pointerType !== "mouse" && event.pointerType !== "pen") {
+        return;
+      }
+      if (event.button !== 0) return;
+      isDraggingRef.current = true;
+      dragStateRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        scrollLeft: el.scrollLeft,
+        hasMoved: false,
+      };
+      el.setPointerCapture(event.pointerId);
+      setIsDragging(true);
+    },
+    []
+  );
+
+  const handlePointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!isDraggingRef.current) return;
+      const el = scrollRef.current;
+      if (!el) return;
+      event.preventDefault();
+      const deltaX = event.clientX - dragStateRef.current.startX;
+      if (!dragStateRef.current.hasMoved && Math.abs(deltaX) > 4) {
+        dragStateRef.current.hasMoved = true;
+      }
+      el.scrollLeft = dragStateRef.current.scrollLeft - deltaX;
+    },
+    []
+  );
+
+  const handlePointerUp = useCallback(() => {
+    endDrag();
+  }, [endDrag]);
+
+  const handleClickCapture = useCallback((event: React.MouseEvent) => {
+    if (dragStateRef.current.hasMoved) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }, []);
+
+  if (!products.length) return null;
+
+  return (
+    <div className="relative rounded-xl border bg-card/50 px-2 py-4">
+      {hasOverflow && (
+        <>
+          <div className="pointer-events-none absolute inset-y-4 left-0 w-16 bg-linear-to-r from-background via-background/95 to-transparent" />
+          <div className="pointer-events-none absolute inset-y-4 right-0 w-16 bg-linear-to-l from-background via-background/95 to-transparent" />
+          <div className="absolute left-3 top-1/2 z-10 -translate-y-1/2">
+            <Button
+              variant="secondary"
+              size="icon"
+              onClick={() => scrollByPage("left")}
+              disabled={!canScrollPrev}
+              aria-label={`Scroll ${label} left`}
+            >
+              <ArrowLeft />
+            </Button>
+          </div>
+          <div className="absolute right-3 top-1/2 z-10 -translate-y-1/2">
+            <Button
+              variant="secondary"
+              size="icon"
+              onClick={() => scrollByPage("right")}
+              disabled={!canScrollNext}
+              aria-label={`Scroll ${label} right`}
+            >
+              <ArrowRight />
+            </Button>
+          </div>
+        </>
+      )}
+      <div
+        ref={scrollRef}
+        className={cn(
+          "overflow-x-auto px-4 py-2 scrollbar-none snap-x snap-mandatory touch-pan-x cursor-grab",
+          isDragging && "cursor-grabbing select-none"
+        )}
+        style={{ scrollBehavior: "smooth" }}
+        onPointerDownCapture={handlePointerDown}
+        onPointerMoveCapture={handlePointerMove}
+        onPointerUpCapture={handlePointerUp}
+        onPointerLeave={handlePointerUp}
+        onPointerCancelCapture={handlePointerUp}
+        onClickCapture={handleClickCapture}
+        aria-label={`${label} products`}
+      >
+        <div className="flex w-max gap-4 pr-4">
+          {products.map((product) => (
+            <div key={product.id} className="w-64 shrink-0 snap-start">
+              <AnimatedProductCard product={product} className="h-full" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 function isMissingTableError(error: PostgrestError | null) {
   if (!error) return false;
@@ -250,46 +442,18 @@ export function CatalogPageClient({
     ...Array.from(new Set(products.map((product) => product.type))),
   ];
 
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const [canScrollPrev, setCanScrollPrev] = useState(false);
-  const [canScrollNext, setCanScrollNext] = useState(false);
-  const [currentPage, setCurrentPage] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
-
-  const getItemWidth = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return 0;
-    const first = el.querySelector("[data-item]") as HTMLElement | null;
-    if (first) return first.clientWidth;
-    return Math.floor((el.clientWidth || 0) / 3);
-  }, []);
-
-  const updateScrollButtons = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const item = getItemWidth();
-    const visible = item ? Math.max(1, Math.floor(el.clientWidth / item)) : 1;
-    const pages = item ? Math.ceil(el.scrollWidth / (item * visible)) : 1;
-    const page = item ? Math.round(el.scrollLeft / (item * visible)) : 0;
-
-    setCanScrollPrev(el.scrollLeft > 0);
-    setCanScrollNext(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
-    setTotalPages(pages);
-    setCurrentPage(Math.min(Math.max(0, page), Math.max(0, pages - 1)));
-  }, [getItemWidth]);
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    updateScrollButtons();
-    const onScroll = () => updateScrollButtons();
-    window.addEventListener("resize", updateScrollButtons);
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      window.removeEventListener("resize", updateScrollButtons);
-      el.removeEventListener("scroll", onScroll);
-    };
-  }, [updateScrollButtons]);
+  const rows = useMemo(() => {
+    const firstRow: Product[] = [];
+    const secondRow: Product[] = [];
+    filteredProducts.forEach((product, index) => {
+      if (index % 2 === 0) {
+        firstRow.push(product);
+      } else {
+        secondRow.push(product);
+      }
+    });
+    return [firstRow, secondRow].filter((row) => row.length > 0);
+  }, [filteredProducts]);
 
   if (isLoading) {
     return (
@@ -371,97 +535,14 @@ export function CatalogPageClient({
                   </div>
                 </div>
               ) : (
-                <div className="relative">
-                  <div className="absolute left-2 top-1/2 -translate-y-1/2 z-10">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => {
-                        const el = scrollRef.current;
-                        if (!el) return;
-                        const item = getItemWidth();
-                        if (!item) return;
-                        const visible = Math.max(
-                          1,
-                          Math.floor(el.clientWidth / item)
-                        );
-                        const pageWidth = item * visible;
-                        el.scrollBy({ left: -pageWidth, behavior: "smooth" });
-                      }}
-                      aria-label="Previous"
-                      disabled={!canScrollPrev}
-                    >
-                      <ArrowLeft />
-                    </Button>
-                  </div>
-
-                  <div className="absolute right-2 top-1/2 -translate-y-1/2 z-10">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => {
-                        const el = scrollRef.current;
-                        if (!el) return;
-                        const item = getItemWidth();
-                        if (!item) return;
-                        const visible = Math.max(
-                          1,
-                          Math.floor(el.clientWidth / item)
-                        );
-                        const pageWidth = item * visible;
-                        el.scrollBy({ left: pageWidth, behavior: "smooth" });
-                      }}
-                      aria-label="Next"
-                      disabled={!canScrollNext}
-                    >
-                      <ArrowRight />
-                    </Button>
-                  </div>
-
-                  <div className="mt-4">
-                    <div
-                      ref={scrollRef}
-                      className="flex gap-2 overflow-x-auto py-2 scrollbar-none snap-x snap-mandatory"
-                    >
-                      {filteredProducts.map((product) => (
-                        <AnimatedProductCard
-                          key={product.id}
-                          product={product}
-                        />
-                      ))}
-                    </div>
-
-                    {totalPages > 1 && (
-                      <div className="mt-3 flex items-center justify-center gap-2">
-                        {Array.from({ length: totalPages }).map((_, i) => (
-                          <button
-                            key={i}
-                            onClick={() => {
-                              const el = scrollRef.current;
-                              if (!el) return;
-                              const item = getItemWidth();
-                              if (!item) return;
-                              const visible = Math.max(
-                                1,
-                                Math.floor(el.clientWidth / item)
-                              );
-                              const pageWidth = item * visible;
-                              el.scrollTo({
-                                left: i * pageWidth,
-                                behavior: "smooth",
-                              });
-                            }}
-                            aria-label={`Go to page ${i + 1}`}
-                            className={`h-2 w-2 rounded-full transition-colors ${
-                              i === currentPage
-                                ? "bg-foreground"
-                                : "bg-muted/60"
-                            }`}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                <div className="mt-4 space-y-6">
+                  {rows.map((rowProducts, index) => (
+                    <ScrollableProductRow
+                      key={`row-${index}`}
+                      products={rowProducts}
+                      label={`Row ${index + 1}`}
+                    />
+                  ))}
                 </div>
               )}
             </section>
