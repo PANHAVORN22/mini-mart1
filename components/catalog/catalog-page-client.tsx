@@ -81,6 +81,8 @@ function ScrollableProductRow({
     startX: 0,
     scrollLeft: 0,
     hasMoved: false,
+    hasCapture: false,
+    pointerType: "" as "" | "mouse" | "pen",
   });
   const isDraggingRef = useRef(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -113,6 +115,43 @@ function ScrollableProductRow({
     updateScrollState();
   }, [products.length, updateScrollState]);
 
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    // Convert wheel gestures (vertical or horizontal) into horizontal scrolling for desktop users.
+    const handleWheel = (event: WheelEvent) => {
+      const hasHorizontalOverflow = el.scrollWidth - el.clientWidth > 8;
+      if (!hasHorizontalOverflow) {
+        return;
+      }
+
+      let delta = 0;
+      if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+        delta = event.deltaX;
+      } else if (event.deltaY !== 0) {
+        delta = event.deltaY;
+      }
+
+      if (delta === 0) {
+        return;
+      }
+
+      const scrollingLeft = delta < 0;
+      const scrollingRight = delta > 0;
+      const atStart = el.scrollLeft <= 0;
+      const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 1;
+      if ((scrollingLeft && atStart) || (scrollingRight && atEnd)) {
+        return;
+      }
+
+      event.preventDefault();
+      el.scrollBy({ left: delta, behavior: "auto" });
+    };
+
+    el.addEventListener("wheel", handleWheel, { passive: false });
+    return () => el.removeEventListener("wheel", handleWheel);
+  }, []);
+
   const scrollByPage = useCallback((direction: "left" | "right") => {
     const el = scrollRef.current;
     if (!el) return;
@@ -126,7 +165,11 @@ function ScrollableProductRow({
   const endDrag = useCallback(() => {
     if (!isDraggingRef.current) return;
     const el = scrollRef.current;
-    if (el && dragStateRef.current.pointerId !== -1) {
+    if (
+      el &&
+      dragStateRef.current.pointerId !== -1 &&
+      dragStateRef.current.hasCapture
+    ) {
       try {
         el.releasePointerCapture(dragStateRef.current.pointerId);
       } catch (error) {
@@ -139,6 +182,8 @@ function ScrollableProductRow({
       startX: 0,
       scrollLeft: 0,
       hasMoved: false,
+      hasCapture: false,
+      pointerType: "",
     };
     setIsDragging(false);
   }, []);
@@ -147,18 +192,20 @@ function ScrollableProductRow({
     (event: React.PointerEvent<HTMLDivElement>) => {
       const el = scrollRef.current;
       if (!el) return;
-      if (event.pointerType !== "mouse" && event.pointerType !== "pen") {
+      const isPointerDrag =
+        event.pointerType === "mouse" || event.pointerType === "pen";
+      if (!isPointerDrag || event.button !== 0) {
         return;
       }
-      if (event.button !== 0) return;
       isDraggingRef.current = true;
       dragStateRef.current = {
         pointerId: event.pointerId,
         startX: event.clientX,
         scrollLeft: el.scrollLeft,
         hasMoved: false,
+        hasCapture: false,
+        pointerType: event.pointerType as "mouse" | "pen",
       };
-      el.setPointerCapture(event.pointerId);
       setIsDragging(true);
     },
     []
@@ -173,6 +220,14 @@ function ScrollableProductRow({
       const deltaX = event.clientX - dragStateRef.current.startX;
       if (!dragStateRef.current.hasMoved && Math.abs(deltaX) > 4) {
         dragStateRef.current.hasMoved = true;
+        if (!dragStateRef.current.hasCapture) {
+          try {
+            el.setPointerCapture(dragStateRef.current.pointerId);
+            dragStateRef.current.hasCapture = true;
+          } catch (error) {
+            console.warn("Unable to capture pointer", error);
+          }
+        }
       }
       el.scrollLeft = dragStateRef.current.scrollLeft - deltaX;
     },
@@ -229,11 +284,11 @@ function ScrollableProductRow({
           isDragging && "cursor-grabbing select-none"
         )}
         style={{ scrollBehavior: "smooth" }}
-        onPointerDownCapture={handlePointerDown}
-        onPointerMoveCapture={handlePointerMove}
-        onPointerUpCapture={handlePointerUp}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
-        onPointerCancelCapture={handlePointerUp}
+        onPointerCancel={handlePointerUp}
         onClickCapture={handleClickCapture}
         aria-label={`${label} products`}
       >
@@ -248,7 +303,6 @@ function ScrollableProductRow({
     </div>
   );
 }
-
 
 function isMissingTableError(error: PostgrestError | null) {
   if (!error) return false;
