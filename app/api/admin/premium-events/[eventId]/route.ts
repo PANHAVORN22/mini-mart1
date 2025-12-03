@@ -5,13 +5,14 @@ const DEV_MODE = process.env.NODE_ENV !== "production";
 
 export async function DELETE(
   _req: Request,
-  { params }: { params: { eventId: string } }
+  props: { params: Promise<{ eventId: string }> }
 ) {
   const adminContext = await requireAdminContext();
   if (adminContext instanceof NextResponse) {
     return adminContext;
   }
 
+  const params = await props.params;
   const eventId = params.eventId;
   if (!eventId) {
     return NextResponse.json(

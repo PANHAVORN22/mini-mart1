@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { ShoppingCart, User, LogOut, Crown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCartStore } from "@/lib/cart-store";
@@ -71,15 +72,19 @@ export function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60">
-      <div className="flex h-16 items-center justify-between">
-        <Link href="/" className="flex items-center gap-2">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
-            <span className="text-xl font-bold text-primary-foreground">
-              🛒
-            </span>
+    <header className="site-header sticky top-0 z-50 w-full backdrop-blur supports-backdrop-filter:bg-background/60">
+      <div className="flex h-20 items-center justify-between">
+        <Link href="/" className="flex items-center gap-6">
+          <div className="relative h-14 w-14 sm:h-16 sm:w-16 md:h-20 md:w-20 lg:h-24 lg:w-24 overflow-hidden rounded-md shadow-md">
+            <Image
+              src="/assets/print.jpg"
+              alt="E-mart logo"
+              fill
+              sizes="(max-width: 640px) 56px, (max-width: 768px) 64px, (max-width: 1024px) 80px, 96px"
+              className="object-contain"
+              priority
+            />
           </div>
-          <span className="text-xl font-bold">E-cornor</span>
         </Link>
 
         <nav className="hidden md:flex items-center gap-6">

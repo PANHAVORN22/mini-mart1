@@ -47,7 +47,7 @@ export function UserProvider({
 }) {
   const [user, setUser] = useState<UserProfile | null>(initialUser);
   const [isLoading, setIsLoading] = useState(!initialUser);
-  const supabase = getSupabaseBrowserClient();
+  const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const didFinishInitialSession = useRef(false);
 
@@ -55,8 +55,8 @@ export function UserProvider({
     if (channelRef.current) {
       try {
         await supabase.removeChannel(channelRef.current);
-      } catch (err) {
-        console.warn("Failed to remove Supabase realtime channel", err);
+      } catch {
+        // Silently ignore cleanup errors
       }
       channelRef.current = null;
     }
@@ -82,14 +82,12 @@ export function UserProvider({
         .eq("id", id)
         .maybeSingle();
 
-      if (error) {
-        console.error("Error fetching user profile:", error);
-      } else {
+      if (!error) {
         profile = data;
       }
 
       if (!profile) {
-        const { data: inserted, error: insertError } = await supabase
+        const { data: inserted } = await supabase
           .from("users")
           .insert({
             id,
@@ -100,11 +98,7 @@ export function UserProvider({
           .select("*")
           .single();
 
-        if (insertError) {
-          console.error("Error creating user profile:", insertError);
-        } else {
-          profile = inserted;
-        }
+        profile = inserted;
       }
 
       if (!profile) {
@@ -157,11 +151,8 @@ export function UserProvider({
           .subscribe();
 
         channelRef.current = channel;
-      } catch (err) {
-        console.warn(
-          "Failed to subscribe to user profile realtime updates",
-          err
-        );
+      } catch {
+        // Silently ignore realtime subscription errors
       }
     },
     [cleanupChannel, supabase]
@@ -180,14 +171,9 @@ export function UserProvider({
     const loadInitialSession = async () => {
       const {
         data: { session },
-        error,
       } = await supabase.auth.getSession();
 
       if (!active) return;
-
-      if (error) {
-        console.error("Error fetching initial session:", error);
-      }
 
       await resolveProfile(session?.user ?? null);
       didFinishInitialSession.current = true;
@@ -220,8 +206,8 @@ export function UserProvider({
       active = false;
       try {
         subscription.unsubscribe();
-      } catch (err) {
-        console.warn("Failed to unsubscribe from auth changes", err);
+      } catch {
+        // Silently ignore unsubscribe errors
       }
       void cleanupChannel();
     };

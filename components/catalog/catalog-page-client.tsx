@@ -5,7 +5,7 @@ import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { ProductCard } from "@/components/product-card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, ArrowRight, RefreshCcw } from "lucide-react";
+import { RefreshCcw, Grid3x3, List } from "lucide-react";
 import { ProductFilters } from "@/components/product-filters";
 import { useUser } from "@/lib/hooks/use-user";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -13,296 +13,15 @@ import { toast } from "sonner";
 import type { PostgrestError } from "@supabase/supabase-js";
 import type { Product } from "@/lib/types";
 import { mockBeers } from "@/lib/mock-data";
-import { runWithTimeout } from "@/lib/run-with-timeout";
 import { normalizeProductRecord } from "@/lib/catalog";
 import { cn } from "@/lib/utils";
-
-const SUPABASE_FETCH_TIMEOUT_MS = 8000;
-
-function AnimatedProductCard({
-  product,
-  className,
-}: {
-  product: Product;
-  className?: string;
-}) {
-  const [isVisible, setIsVisible] = useState(false);
-  const cardRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const node = cardRef.current;
-    if (!node) return;
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setIsVisible(true);
-          observer.unobserve(entry.target);
-        }
-      },
-      { threshold: 0.2 }
-    );
-
-    observer.observe(node);
-
-    return () => observer.disconnect();
-  }, []);
-
-  return (
-    <div
-      ref={cardRef}
-      data-item
-      className={cn(
-        "w-full transition-all duration-500 ease-out will-change-transform",
-        isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4",
-        className
-      )}
-    >
-      <div className="group h-full transition-transform duration-300 hover:-translate-y-2">
-        <ProductCard product={product} compact />
-      </div>
-    </div>
-  );
-}
-
-function ScrollableProductRow({
-  products,
-  label,
-}: {
-  products: Product[];
-  label: string;
-}) {
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const [canScrollPrev, setCanScrollPrev] = useState(false);
-  const [canScrollNext, setCanScrollNext] = useState(false);
-  const [hasOverflow, setHasOverflow] = useState(false);
-  const dragStateRef = useRef({
-    pointerId: -1,
-    startX: 0,
-    scrollLeft: 0,
-    hasMoved: false,
-    hasCapture: false,
-    pointerType: "" as "" | "mouse" | "pen",
-  });
-  const isDraggingRef = useRef(false);
-  const [isDragging, setIsDragging] = useState(false);
-
-  const updateScrollState = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const tolerance = 8;
-    setCanScrollPrev(el.scrollLeft > tolerance);
-    setCanScrollNext(
-      el.scrollLeft + el.clientWidth < el.scrollWidth - tolerance
-    );
-    setHasOverflow(el.scrollWidth - el.clientWidth > tolerance);
-  }, []);
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    updateScrollState();
-    const handleScroll = () => updateScrollState();
-    el.addEventListener("scroll", handleScroll, { passive: true });
-    window.addEventListener("resize", handleScroll);
-    return () => {
-      el.removeEventListener("scroll", handleScroll);
-      window.removeEventListener("resize", handleScroll);
-    };
-  }, [updateScrollState]);
-
-  useEffect(() => {
-    updateScrollState();
-  }, [products.length, updateScrollState]);
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    // Convert wheel gestures (vertical or horizontal) into horizontal scrolling for desktop users.
-    const handleWheel = (event: WheelEvent) => {
-      const hasHorizontalOverflow = el.scrollWidth - el.clientWidth > 8;
-      if (!hasHorizontalOverflow) {
-        return;
-      }
-
-      let delta = 0;
-      if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
-        delta = event.deltaX;
-      } else if (event.deltaY !== 0) {
-        delta = event.deltaY;
-      }
-
-      if (delta === 0) {
-        return;
-      }
-
-      const scrollingLeft = delta < 0;
-      const scrollingRight = delta > 0;
-      const atStart = el.scrollLeft <= 0;
-      const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 1;
-      if ((scrollingLeft && atStart) || (scrollingRight && atEnd)) {
-        return;
-      }
-
-      event.preventDefault();
-      el.scrollBy({ left: delta, behavior: "auto" });
-    };
-
-    el.addEventListener("wheel", handleWheel, { passive: false });
-    return () => el.removeEventListener("wheel", handleWheel);
-  }, []);
-
-  const scrollByPage = useCallback((direction: "left" | "right") => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const amount = Math.max(el.clientWidth * 0.85, 240);
-    el.scrollBy({
-      left: direction === "left" ? -amount : amount,
-      behavior: "smooth",
-    });
-  }, []);
-
-  const endDrag = useCallback(() => {
-    if (!isDraggingRef.current) return;
-    const el = scrollRef.current;
-    if (
-      el &&
-      dragStateRef.current.pointerId !== -1 &&
-      dragStateRef.current.hasCapture
-    ) {
-      try {
-        el.releasePointerCapture(dragStateRef.current.pointerId);
-      } catch (error) {
-        console.warn("Unable to release pointer capture", error);
-      }
-    }
-    isDraggingRef.current = false;
-    dragStateRef.current = {
-      pointerId: -1,
-      startX: 0,
-      scrollLeft: 0,
-      hasMoved: false,
-      hasCapture: false,
-      pointerType: "",
-    };
-    setIsDragging(false);
-  }, []);
-
-  const handlePointerDown = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      const el = scrollRef.current;
-      if (!el) return;
-      const isPointerDrag =
-        event.pointerType === "mouse" || event.pointerType === "pen";
-      if (!isPointerDrag || event.button !== 0) {
-        return;
-      }
-      isDraggingRef.current = true;
-      dragStateRef.current = {
-        pointerId: event.pointerId,
-        startX: event.clientX,
-        scrollLeft: el.scrollLeft,
-        hasMoved: false,
-        hasCapture: false,
-        pointerType: event.pointerType as "mouse" | "pen",
-      };
-      setIsDragging(true);
-    },
-    []
-  );
-
-  const handlePointerMove = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      if (!isDraggingRef.current) return;
-      const el = scrollRef.current;
-      if (!el) return;
-      event.preventDefault();
-      const deltaX = event.clientX - dragStateRef.current.startX;
-      if (!dragStateRef.current.hasMoved && Math.abs(deltaX) > 4) {
-        dragStateRef.current.hasMoved = true;
-        if (!dragStateRef.current.hasCapture) {
-          try {
-            el.setPointerCapture(dragStateRef.current.pointerId);
-            dragStateRef.current.hasCapture = true;
-          } catch (error) {
-            console.warn("Unable to capture pointer", error);
-          }
-        }
-      }
-      el.scrollLeft = dragStateRef.current.scrollLeft - deltaX;
-    },
-    []
-  );
-
-  const handlePointerUp = useCallback(() => {
-    endDrag();
-  }, [endDrag]);
-
-  const handleClickCapture = useCallback((event: React.MouseEvent) => {
-    if (dragStateRef.current.hasMoved) {
-      event.preventDefault();
-      event.stopPropagation();
-    }
-  }, []);
-
-  if (!products.length) return null;
-
-  return (
-    <div className="relative rounded-xl border bg-card/50 px-2 py-4">
-      {hasOverflow && (
-        <>
-          <div className="pointer-events-none absolute inset-y-4 left-0 w-16 bg-linear-to-r from-background via-background/95 to-transparent" />
-          <div className="pointer-events-none absolute inset-y-4 right-0 w-16 bg-linear-to-l from-background via-background/95 to-transparent" />
-          <div className="absolute left-3 top-1/2 z-10 -translate-y-1/2">
-            <Button
-              variant="secondary"
-              size="icon"
-              onClick={() => scrollByPage("left")}
-              disabled={!canScrollPrev}
-              aria-label={`Scroll ${label} left`}
-            >
-              <ArrowLeft />
-            </Button>
-          </div>
-          <div className="absolute right-3 top-1/2 z-10 -translate-y-1/2">
-            <Button
-              variant="secondary"
-              size="icon"
-              onClick={() => scrollByPage("right")}
-              disabled={!canScrollNext}
-              aria-label={`Scroll ${label} right`}
-            >
-              <ArrowRight />
-            </Button>
-          </div>
-        </>
-      )}
-      <div
-        ref={scrollRef}
-        className={cn(
-          "overflow-x-auto px-4 py-2 scrollbar-none snap-x snap-mandatory touch-pan-x cursor-grab",
-          isDragging && "cursor-grabbing select-none"
-        )}
-        style={{ scrollBehavior: "smooth" }}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerLeave={handlePointerUp}
-        onPointerCancel={handlePointerUp}
-        onClickCapture={handleClickCapture}
-        aria-label={`${label} products`}
-      >
-        <div className="flex w-max gap-4 pr-4">
-          {products.map((product) => (
-            <div key={product.id} className="w-64 shrink-0 snap-start">
-              <AnimatedProductCard product={product} className="h-full" />
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 function isMissingTableError(error: PostgrestError | null) {
   if (!error) return false;
@@ -352,6 +71,9 @@ interface CatalogPageClientProps {
   initialError?: string | null;
 }
 
+type ViewMode = "grid" | "list";
+type SortOption = "newest" | "price-low" | "price-high" | "name" | "stock";
+
 export function CatalogPageClient({
   initialProducts,
   initialError = null,
@@ -365,6 +87,8 @@ export function CatalogPageClient({
   const [selectedType, setSelectedType] = useState<string>("all");
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 50]);
   const [showPremiumOnly, setShowPremiumOnly] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  const [sortBy, setSortBy] = useState<SortOption>("newest");
   const fallbackToastShown = useRef(false);
   const isMountedRef = useRef(true);
 
@@ -407,56 +131,49 @@ export function CatalogPageClient({
       return;
     }
 
-    let catalog: Product[] = [];
-
     try {
       const supabase = getSupabaseBrowserClient();
-      catalog = await runWithTimeout(
-        () => fetchSupabaseCatalog(supabase),
-        "Catalog fetch",
-        SUPABASE_FETCH_TIMEOUT_MS
-      );
+      const catalog = await fetchSupabaseCatalog(supabase);
+
+      if (!catalog.length) {
+        if (!fallbackToastShown.current) {
+          toast("Showing sample catalog data", {
+            description: "Unable to load live catalog items.",
+          });
+          fallbackToastShown.current = true;
+        }
+        if (isMountedRef.current) {
+          setProducts(fallbackProducts);
+        }
+      } else if (isMountedRef.current) {
+        setProducts(catalog);
+      }
     } catch (error) {
-      console.error("Error fetching products:", error);
       setLoadError(
         error instanceof Error
           ? error.message
           : "Unable to load live catalog items."
       );
-    }
-
-    if (!catalog.length) {
-      if (!fallbackToastShown.current) {
-        toast("Showing sample catalog data", {
-          description: "Unable to load live catalog items.",
-        });
-        fallbackToastShown.current = true;
+      if (isMountedRef.current) {
+        setProducts(fallbackProducts);
       }
-      catalog = fallbackProducts;
-    }
-
-    if (isMountedRef.current) {
-      setProducts(catalog);
-      setIsLoading(false);
+    } finally {
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
   }, [fallbackProducts, hasSupabaseCredentials]);
 
   const shouldClientRefetch = initialProducts.length === 0;
 
   useEffect(() => {
-    if (!shouldClientRefetch) {
-      return;
-    }
-
-    const timeoutId = setTimeout(() => {
+    if (shouldClientRefetch) {
       fetchProducts();
-    }, 0);
-
-    return () => clearTimeout(timeoutId);
+    }
   }, [fetchProducts, shouldClientRefetch]);
 
   const filteredProducts = useMemo(() => {
-    return products.filter((product) => {
+    let filtered = products.filter((product) => {
       const matchesSearch =
         product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         product.brand.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -481,6 +198,28 @@ export function CatalogPageClient({
         canView
       );
     });
+
+    // Sort products
+    switch (sortBy) {
+      case "price-low":
+        filtered.sort((a, b) => a.price - b.price);
+        break;
+      case "price-high":
+        filtered.sort((a, b) => b.price - a.price);
+        break;
+      case "name":
+        filtered.sort((a, b) => a.name.localeCompare(b.name));
+        break;
+      case "stock":
+        filtered.sort((a, b) => b.stock - a.stock);
+        break;
+      case "newest":
+      default:
+        // Already sorted by created_at descending from the query
+        break;
+    }
+
+    return filtered;
   }, [
     products,
     searchQuery,
@@ -489,25 +228,13 @@ export function CatalogPageClient({
     priceRange,
     showPremiumOnly,
     user,
+    sortBy,
   ]);
 
   const productTypes = [
     "all",
     ...Array.from(new Set(products.map((product) => product.type))),
   ];
-
-  const rows = useMemo(() => {
-    const firstRow: Product[] = [];
-    const secondRow: Product[] = [];
-    filteredProducts.forEach((product, index) => {
-      if (index % 2 === 0) {
-        firstRow.push(product);
-      } else {
-        secondRow.push(product);
-      }
-    });
-    return [firstRow, secondRow].filter((row) => row.length > 0);
-  }, [filteredProducts]);
 
   if (isLoading) {
     return (
@@ -539,7 +266,7 @@ export function CatalogPageClient({
 
         <div className="container py-8">
           <div className="grid gap-8 lg:grid-cols-[280px_1fr]">
-            <aside className="space-y-6">
+            <aside className="space-y-6 lg:sticky lg:top-4 lg:self-start lg:h-fit">
               <ProductFilters
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
@@ -572,11 +299,44 @@ export function CatalogPageClient({
                   </Button>
                 </div>
               )}
-              <div className="mb-6 flex items-center justify-between">
+
+              <div className="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <p className="text-sm text-muted-foreground">
                   Showing {filteredProducts.length} of {products.length}{" "}
                   products
                 </p>
+                <div className="flex items-center gap-3 w-full sm:w-auto">
+                  <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Sort by" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="newest">Newest First</SelectItem>
+                      <SelectItem value="price-low">Price: Low to High</SelectItem>
+                      <SelectItem value="price-high">Price: High to Low</SelectItem>
+                      <SelectItem value="name">Name (A-Z)</SelectItem>
+                      <SelectItem value="stock">Stock Available</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <div className="flex border rounded-md">
+                    <Button
+                      variant={viewMode === "grid" ? "secondary" : "ghost"}
+                      size="sm"
+                      onClick={() => setViewMode("grid")}
+                      className="rounded-r-none"
+                    >
+                      <Grid3x3 className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant={viewMode === "list" ? "secondary" : "ghost"}
+                      size="sm"
+                      onClick={() => setViewMode("list")}
+                      className="rounded-l-none"
+                    >
+                      <List className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
               </div>
 
               {filteredProducts.length === 0 ? (
@@ -589,13 +349,16 @@ export function CatalogPageClient({
                   </div>
                 </div>
               ) : (
-                <div className="mt-4 space-y-6">
-                  {rows.map((rowProducts, index) => (
-                    <ScrollableProductRow
-                      key={`row-${index}`}
-                      products={rowProducts}
-                      label={`Row ${index + 1}`}
-                    />
+                // Show all products mixed together regardless of category selection
+                <div
+                  className={cn(
+                    viewMode === "grid"
+                      ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
+                      : "flex flex-col gap-4 max-w-2xl"
+                  )}
+                >
+                  {filteredProducts.map((product) => (
+                    <ProductCard key={product.id} product={product} compact={viewMode === "grid"} />
                   ))}
                 </div>
               )}

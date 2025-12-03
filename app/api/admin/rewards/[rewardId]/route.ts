@@ -5,13 +5,14 @@ const DEV_MODE = process.env.NODE_ENV !== "production";
 
 export async function PATCH(
   req: Request,
-  { params }: { params: { rewardId: string } }
+  props: { params: Promise<{ rewardId: string }> }
 ) {
   const adminContext = await requireAdminContext();
   if (adminContext instanceof NextResponse) {
     return adminContext;
   }
 
+  const params = await props.params;
   const rewardId = params.rewardId;
   if (!rewardId) {
     return NextResponse.json({ error: "Missing reward id" }, { status: 400 });
@@ -94,13 +95,14 @@ export async function PATCH(
 
 export async function DELETE(
   _req: Request,
-  { params }: { params: { rewardId: string } }
+  props: { params: Promise<{ rewardId: string }> }
 ) {
   const adminContext = await requireAdminContext();
   if (adminContext instanceof NextResponse) {
     return adminContext;
   }
 
+  const params = await props.params;
   const rewardId = params.rewardId;
   if (!rewardId) {
     return NextResponse.json({ error: "Missing reward id" }, { status: 400 });

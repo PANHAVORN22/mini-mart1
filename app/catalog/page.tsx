@@ -15,7 +15,6 @@ export default async function CatalogPage() {
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.error("Failed to fetch products from Supabase:", error);
       initialError = error.message ?? "Unable to load products.";
     } else if (productsData) {
       initialProducts = productsData.map((product: any) =>
@@ -23,7 +22,6 @@ export default async function CatalogPage() {
       );
     }
   } catch (error) {
-    console.error("Unexpected error loading products:", error);
     initialError =
       error instanceof Error
         ? error.message

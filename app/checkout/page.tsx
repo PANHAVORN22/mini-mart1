@@ -2,7 +2,7 @@
 
 import type React from "react";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
@@ -15,7 +15,6 @@ import { cartItemToProduct, useCartStore } from "@/lib/cart-store";
 import { useUser } from "@/lib/hooks/use-user";
 import { toast } from "sonner";
 import { MapPin, UserIcon } from "lucide-react";
-import Link from "next/link";
 import type { CartItem } from "@/lib/types";
 import { PaymentModal } from "@/components/payment-modal";
 
@@ -61,19 +60,6 @@ export default function CheckoutPage() {
   const discount = user?.isPremium ? rawSubtotal * 0.15 : 0;
   const subtotal = Math.max(0, rawSubtotal - discount);
   const shipping = subtotal > 50 ? 0 : 5.99;
-  const checkoutLineItems = useMemo(
-    () =>
-      items.map((item) => {
-        const product = cartItemToProduct(item);
-        return {
-          name: product.name,
-          quantity: item.quantity,
-          price: Number(product.price.toFixed(2)),
-        };
-      }),
-    [items]
-  );
-
   const tax = subtotal * 0.1;
   const total = subtotal + shipping + tax;
 
@@ -213,8 +199,7 @@ export default function CheckoutPage() {
       toast.success("Order created", {
         description: "Scan the ABA QR code to complete your payment.",
       });
-    } catch (error) {
-      console.error("Checkout error:", error);
+    } catch {
       toast.error("Order failed", {
         description:
           "Something went wrong while processing your order. Please try again.",
@@ -257,7 +242,7 @@ export default function CheckoutPage() {
 
         <div className="container py-8">
           <form onSubmit={handleSubmit}>
-            <div className="grid gap-8 lg:grid-cols-[1fr_400px]">
+            <div className="grid gap-8 lg:grid-cols-[1fr_400px] max-w-6xl mx-auto">
               <div className="space-y-6">
                 {/* Contact Information */}
                 <Card>

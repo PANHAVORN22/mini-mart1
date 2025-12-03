@@ -46,7 +46,7 @@ import {
   Plus,
 } from "lucide-react";
 import { toast } from "sonner";
-import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { getSupabaseBrowserClient, getSupabaseDataClient } from "@/lib/supabase/client";
 import { useCartStore } from "@/lib/cart-store";
 import type { Product } from "@/lib/types";
 
@@ -200,6 +200,9 @@ export default function SubscriptionPage() {
   const { user, isAuthenticated } = useUser();
   const [selectedPlan, setSelectedPlan] = useState<string>("yearly");
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Always start with empty state to avoid hydration mismatch
+  // Cache will be loaded in useEffect
   const [premiumEvents, setPremiumEvents] = useState<PremiumEvent[]>([]);
   const [eventsLoading, setEventsLoading] = useState(true);
   const [eventsError, setEventsError] = useState<string | null>(null);
@@ -341,38 +344,67 @@ export default function SubscriptionPage() {
     let cancelled = false;
 
     const loadEvents = async () => {
+      // Try to load from cache first (client-side only)
+      if (typeof window !== 'undefined') {
+        try {
+          const cached = localStorage.getItem('premium_events_cache');
+          if (cached) {
+            const { events, timestamp } = JSON.parse(cached);
+            // Cache valid for 5 minutes
+            if (Date.now() - timestamp < 5 * 60 * 1000) {
+              setPremiumEvents(events);
+              setEventsLoading(false);
+              return;
+            }
+          }
+        } catch (err) {
+          // Silently ignore cache errors
+        }
+      }
+
       setEventsLoading(true);
       setEventsError(null);
 
       try {
-        const supabase = getSupabaseBrowserClient();
+        const supabase = getSupabaseDataClient();
         const { data, error } = await supabase
           .from("premium_events")
           .select("*")
           .eq("audience", "premium")
           .order("starts_at", { ascending: true });
 
-        const missingTable =
-          error &&
-          (error.message?.toLowerCase().includes("premium_events") ||
-            error.code === "42P01");
+        if (cancelled) return;
 
-        if (missingTable) {
-          if (!cancelled) {
+        if (error) {
+          const missingTable =
+            error.message?.toLowerCase().includes("premium_events") ||
+            error.code === "42P01";
+
+          if (missingTable) {
             setPremiumEvents([]);
             setEventsError("missing-table");
+          } else {
+            setEventsError("generic-error");
           }
           return;
         }
 
-        if (error) {
-          console.error("Error fetching premium events:", error);
-          if (!cancelled) setEventsError("generic-error");
-          return;
-        }
+        setPremiumEvents(data || []);
 
+        // Cache events in localStorage
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('premium_events_cache', JSON.stringify({
+              events: data || [],
+              timestamp: Date.now()
+            }));
+          } catch (err) {
+            // Silently ignore cache errors
+          }
+        }
+      } catch (err) {
         if (!cancelled) {
-          setPremiumEvents(data || []);
+          setEventsError("generic-error");
         }
       } finally {
         if (!cancelled) {
@@ -406,7 +438,7 @@ export default function SubscriptionPage() {
 
     const loadFeaturedProducts = async () => {
       try {
-        const supabase = getSupabaseBrowserClient();
+        const supabase = getSupabaseDataClient();
         const { data, error } = await supabase
           .from("products")
           .select(
@@ -643,23 +675,7 @@ export default function SubscriptionPage() {
               </p>
             </div>
 
-            {!user?.isPremium ? (
-              <Card className="mx-auto max-w-2xl text-center">
-                <CardContent className="space-y-4 py-10">
-                  <div className="flex justify-center">
-                    <Lock className="h-10 w-10 text-muted-foreground" />
-                  </div>
-                  <CardTitle>Premium events are locked</CardTitle>
-                  <CardDescription>
-                    Subscribe today to unlock limited-time drops, exclusive
-                    tastings, and curated bundles.
-                  </CardDescription>
-                  <Button size="lg" onClick={handleSubscribe}>
-                    Become Premium
-                  </Button>
-                </CardContent>
-              </Card>
-            ) : eventsLoading ? (
+            {eventsLoading ? (
               <Card className="mx-auto max-w-3xl">
                 <CardContent className="py-10 text-center">
                   <p className="text-muted-foreground">Loading events...</p>
@@ -681,6 +697,22 @@ export default function SubscriptionPage() {
                 <CardContent className="space-y-2 py-8 text-center text-sm text-destructive">
                   <p className="font-semibold">We couldn&apos;t load events</p>
                   <p>Please try again later.</p>
+                </CardContent>
+              </Card>
+            ) : !user?.isPremium ? (
+              <Card className="mx-auto max-w-2xl text-center">
+                <CardContent className="space-y-4 py-10">
+                  <div className="flex justify-center">
+                    <Lock className="h-10 w-10 text-muted-foreground" />
+                  </div>
+                  <CardTitle>Premium events are locked</CardTitle>
+                  <CardDescription>
+                    Subscribe today to unlock limited-time drops, exclusive
+                    tastings, and curated bundles.
+                  </CardDescription>
+                  <Button size="lg" onClick={handleSubscribe}>
+                    Become Premium
+                  </Button>
                 </CardContent>
               </Card>
             ) : orderedEvents.length === 0 ? (
@@ -1104,10 +1136,10 @@ export default function SubscriptionPage() {
       <Sheet open={isBillingSheetOpen} onOpenChange={handleBillingSheetChange}>
         <SheetContent
           side="right"
-          className="flex flex-col bg-white sm:max-w-md"
+          className="flex flex-col bg-gray-50 sm:max-w-md"
         >
           <form
-            className="flex h-full flex-col gap-6"
+            className="flex h-full flex-col gap-6 "
             onSubmit={handleBillingSubmit}
           >
             <SheetHeader>
@@ -1118,7 +1150,7 @@ export default function SubscriptionPage() {
               </SheetDescription>
             </SheetHeader>
 
-            <div className="flex-1 space-y-5 overflow-y-auto pr-1">
+            <div className="flex-1 space-y-5 overflow-y-auto p-2 bg-gray">
               <div className="space-y-2">
                 <Label htmlFor="cardholder">Cardholder name</Label>
                 <Input
