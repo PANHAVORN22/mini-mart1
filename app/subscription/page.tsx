@@ -46,7 +46,10 @@ import {
   Plus,
 } from "lucide-react";
 import { toast } from "sonner";
-import { getSupabaseBrowserClient, getSupabaseDataClient } from "@/lib/supabase/client";
+import {
+  getSupabaseBrowserClient,
+  getSupabaseDataClient,
+} from "@/lib/supabase/client";
 import { useCartStore } from "@/lib/cart-store";
 import type { Product } from "@/lib/types";
 
@@ -345,9 +348,9 @@ export default function SubscriptionPage() {
 
     const loadEvents = async () => {
       // Try to load from cache first (client-side only)
-      if (typeof window !== 'undefined') {
+      if (typeof window !== "undefined") {
         try {
-          const cached = localStorage.getItem('premium_events_cache');
+          const cached = localStorage.getItem("premium_events_cache");
           if (cached) {
             const { events, timestamp } = JSON.parse(cached);
             // Cache valid for 5 minutes
@@ -392,12 +395,15 @@ export default function SubscriptionPage() {
         setPremiumEvents(data || []);
 
         // Cache events in localStorage
-        if (typeof window !== 'undefined') {
+        if (typeof window !== "undefined") {
           try {
-            localStorage.setItem('premium_events_cache', JSON.stringify({
-              events: data || [],
-              timestamp: Date.now()
-            }));
+            localStorage.setItem(
+              "premium_events_cache",
+              JSON.stringify({
+                events: data || [],
+                timestamp: Date.now(),
+              })
+            );
           } catch (err) {
             // Silently ignore cache errors
           }
@@ -871,7 +877,7 @@ export default function SubscriptionPage() {
               <Card className="mx-auto max-w-md">
                 <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
                   <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-                    <Crown className="h-8 w-8 text-primary" />
+                    <Crown className="h-8 w-8 text-primary " />
                   </div>
                   <div>
                     <h3 className="text-xl font-semibold">
@@ -882,21 +888,23 @@ export default function SubscriptionPage() {
                       membership
                     </p>
                   </div>
-                  <div className="flex gap-3">
-                    <Button
-                      onClick={handleManageSubscription}
-                      variant="outline"
-                      className="bg-transparent"
-                    >
-                      Manage Subscription
-                    </Button>
-                    <Button
-                      onClick={handleCancel}
-                      variant="destructive"
-                      disabled={isProcessing}
-                    >
-                      {isProcessing ? "Cancelling..." : "Cancel"}
-                    </Button>
+                  <div className="mt-4 flex justify-center">
+                    <div className="flex gap-3">
+                      <Button
+                        onClick={handleManageSubscription}
+                        variant="outline"
+                        className="bg-transparent"
+                      >
+                        Manage Subscription
+                      </Button>
+                      <Button
+                        onClick={handleCancel}
+                        variant="destructive"
+                        disabled={isProcessing}
+                      >
+                        {isProcessing ? "Cancelling..." : "Cancel"}
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>

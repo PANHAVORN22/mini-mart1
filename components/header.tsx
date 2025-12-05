@@ -192,6 +192,9 @@ export function Header() {
           )}
         </div>
       </div>
+
+      {/* full-width black ruler below the navigation/header */}
+      <div className="h-px bg-black w-full" aria-hidden="true" />
     </header>
   );
 }
