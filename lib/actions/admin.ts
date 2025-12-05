@@ -1111,8 +1111,55 @@ export async function getAdminStats() {
     const supabase = await getSupabaseServerClient();
 
     // Get total stock
-    const { data: beers } = await supabase.from("beers").select("stock");
-    const totalStock = beers?.reduce((sum, beer) => sum + beer.stock, 0) || 0;
+    // Prefer unified `beers` table, but fall back to `products` if `beers`
+    // is missing. Guard against null/undefined stock values. Also collect
+    // diagnostic info so we can debug why counts may be zero.
+    let totalStock = 0;
+    const debug: Record<string, any> = {
+      usedTable: null,
+      beersCount: 0,
+      productsCount: 0,
+      beersError: null,
+      productsError: null,
+    };
+
+    try {
+      const { data: beers, error: beersError } = await supabase
+        .from("beers")
+        .select("stock");
+
+      debug.beersError = beersError ? String(beersError.message || beersError) : null;
+      debug.beersCount = Array.isArray(beers) ? beers.length : 0;
+
+      if (!beersError && Array.isArray(beers) && beers.length > 0) {
+        totalStock = beers.reduce(
+          (sum, b) => sum + (typeof b?.stock === "number" ? b.stock : 0),
+          0
+        );
+        debug.usedTable = "beers";
+      } else {
+        const { data: products, error: productsError } = await supabase
+          .from("products")
+          .select("stock");
+
+        debug.productsError = productsError ? String(productsError.message || productsError) : null;
+        debug.productsCount = Array.isArray(products) ? products.length : 0;
+
+        if (!productsError && Array.isArray(products) && products.length > 0) {
+          totalStock = products.reduce(
+            (sum, p) => sum + (typeof p?.stock === "number" ? p.stock : 0),
+            0
+          );
+          debug.usedTable = "products";
+        } else {
+          debug.usedTable = null;
+        }
+      }
+    } catch (e) {
+      console.error("Error resolving total stock:", e);
+      debug.beersError = debug.beersError || String(e?.message || e);
+      totalStock = 0;
+    }
 
     // Get total revenue
     const { data: orders } = await supabase
@@ -1136,6 +1183,7 @@ export async function getAdminStats() {
       totalRevenue,
       orderCount,
       userCount: userCount || 0,
+      _debug: debug,
     };
   } catch (error) {
     console.error("Unexpected error fetching admin stats:", error);
