@@ -66,7 +66,8 @@ export function Header() {
       // Force a one-time full reload to clear any client state
       // that might still reflect the previous session.
       try {
-        const alreadyReloaded = sessionStorage.getItem(LOGOUT_RELOAD_KEY) === "1";
+        const alreadyReloaded =
+          sessionStorage.getItem(LOGOUT_RELOAD_KEY) === "1";
         if (!alreadyReloaded) {
           sessionStorage.setItem(LOGOUT_RELOAD_KEY, "1");
           window.location.assign("/");
