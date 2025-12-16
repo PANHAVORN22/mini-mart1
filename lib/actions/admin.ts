@@ -313,6 +313,30 @@ export interface AdminPremiumMembersResult {
   status?: number;
 }
 
+export interface AdminPremiumPointLedgerEntry {
+  id: string;
+  user_id: string;
+  actor_user_id: string | null;
+  delta: number;
+  reason: string | null;
+  metadata: unknown;
+  created_at: string;
+  users?: {
+    email?: string | null;
+    full_name?: string | null;
+  } | null;
+  actor?: {
+    email?: string | null;
+    full_name?: string | null;
+  } | null;
+}
+
+export interface AdminPremiumPointLedgerResult {
+  entries: AdminPremiumPointLedgerEntry[];
+  error?: string;
+  status?: number;
+}
+
 interface AdjustPremiumPointsResult {
   newBalance?: number;
   error?: string;
@@ -665,6 +689,53 @@ export async function getPremiumMembersForAdmin(): Promise<AdminPremiumMembersRe
       error: "Failed to load premium members",
       status: 500,
     };
+  }
+}
+
+export async function getPremiumPointLedgerForAdmin(
+  limit = 200
+): Promise<AdminPremiumPointLedgerResult> {
+  try {
+    const context = await resolveAdminAccess();
+    if ("error" in context) {
+      return {
+        entries: [],
+        error: context.error.message,
+        status: context.error.status,
+      };
+    }
+
+    const { service } = context;
+
+    const boundedLimit = Math.max(1, Math.min(1000, Math.trunc(limit)));
+
+    const { data, error } = await service
+      .from("premium_point_ledger")
+      .select(
+        `
+        id,
+        user_id,
+        actor_user_id,
+        delta,
+        reason,
+        metadata,
+        created_at,
+        users:users!premium_point_ledger_user_id_fkey (email, full_name),
+        actor:users!premium_point_ledger_actor_user_id_fkey (email, full_name)
+      `
+      )
+      .order("created_at", { ascending: false })
+      .limit(boundedLimit);
+
+    if (error) {
+      console.error("Failed to fetch premium point ledger:", error);
+      return { entries: [], error: "Failed to load point ledger", status: 500 };
+    }
+
+    return { entries: (data as any[]) || [], status: 200 };
+  } catch (error) {
+    console.error("Unexpected error fetching premium point ledger:", error);
+    return { entries: [], error: "Failed to load point ledger", status: 500 };
   }
 }
 
@@ -1128,7 +1199,9 @@ export async function getAdminStats() {
         .from("beers")
         .select("stock");
 
-      debug.beersError = beersError ? String(beersError.message || beersError) : null;
+      debug.beersError = beersError
+        ? String(beersError.message || beersError)
+        : null;
       debug.beersCount = Array.isArray(beers) ? beers.length : 0;
 
       if (!beersError && Array.isArray(beers) && beers.length > 0) {
@@ -1142,7 +1215,9 @@ export async function getAdminStats() {
           .from("products")
           .select("stock");
 
-        debug.productsError = productsError ? String(productsError.message || productsError) : null;
+        debug.productsError = productsError
+          ? String(productsError.message || productsError)
+          : null;
         debug.productsCount = Array.isArray(products) ? products.length : 0;
 
         if (!productsError && Array.isArray(products) && products.length > 0) {
@@ -1157,7 +1232,12 @@ export async function getAdminStats() {
       }
     } catch (e) {
       console.error("Error resolving total stock:", e);
-      debug.beersError = debug.beersError || String(e?.message || e);
+      const err = e as unknown;
+      const message =
+        err && typeof err === "object" && "message" in err
+          ? String((err as { message?: unknown }).message ?? err)
+          : String(err);
+      debug.beersError = debug.beersError || message;
       totalStock = 0;
     }
 

@@ -59,7 +59,7 @@ export function PaymentModal({
         setPaymentUrl(null);
         onClose();
       }
-    }
+    };
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
@@ -100,7 +100,7 @@ export function PaymentModal({
       const errorMessage =
         err instanceof Error ? err.message : "Failed to initiate payment";
       toast.error(errorMessage, { id: "payment-loading" });
-      onClose();
+      // Don't force-close the modal here; user might want to retry.
     } finally {
       setIsInitiating(false);
     }
@@ -111,8 +111,16 @@ export function PaymentModal({
     onClose();
   };
 
+  const handleOpenChange = (open: boolean) => {
+    // Only react to closing gestures (ESC/click outside).
+    if (!open) {
+      setPaymentUrl(null);
+      onClose();
+    }
+  };
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-2xl">
         {isInitiating ? (
           // Loading view
@@ -166,10 +174,10 @@ export function PaymentModal({
             </div>
 
             <div className="text-center text-xs text-muted-foreground">
-              <p>Order #{orderId?.slice(0, 8)} • ${amount?.toFixed(2)}</p>
-              <p className="mt-1">
-                Your payment is secured by ABA Bank PayWay
+              <p>
+                Order #{orderId?.slice(0, 8)} • ${amount?.toFixed(2)}
               </p>
+              <p className="mt-1">Your payment is secured by ABA Bank PayWay</p>
             </div>
           </>
         ) : (

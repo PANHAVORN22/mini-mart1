@@ -67,7 +67,7 @@ export interface Product {
   type: string;
   price: number;
   stock: number;
-  description: string;
+  description?: string;
   image_url: string;
   is_premium: boolean;
   alcohol_content?: number;
@@ -77,8 +77,8 @@ export interface Product {
   barcode?: string;
   supplier?: string;
   cost_price?: number;
-  created_at: string;
-  updated_at: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 interface NewProductForm {
@@ -824,6 +824,124 @@ export function UnifiedProductManagement({
       setNewProduct((prev) => ({ ...prev, image: file }));
       const previewUrl = URL.createObjectURL(file);
       setImagePreview(previewUrl);
+    }
+  };
+
+  const populateProductForm = (product: Product) => {
+    setNewProduct({
+      name: product.name ?? "",
+      brand: product.brand ?? "",
+      category: product.category ?? "",
+      type: product.type ?? "",
+      price: String(product.price ?? ""),
+      stock: String(product.stock ?? ""),
+      description: product.description ?? "",
+      is_premium: Boolean(product.is_premium),
+      alcohol_content: product.alcohol_content
+        ? String(product.alcohol_content)
+        : "",
+      volume: product.volume ? String(product.volume) : "",
+      caffeine: product.caffeine ? String(product.caffeine) : "",
+      expiry_date: product.expiry_date ?? "",
+      barcode: product.barcode ?? "",
+      supplier: product.supplier ?? "",
+      cost_price: product.cost_price ? String(product.cost_price) : "",
+      image: null,
+    });
+    setImagePreview(product.image_url || null);
+  };
+
+  const handleSaveProduct = async () => {
+    if (editingProduct) {
+      await handleUpdateProduct();
+      return;
+    }
+    await handleAddProduct();
+  };
+
+  const handleUpdateProduct = async () => {
+    if (legacyMode) {
+      toast.error("Switch to the unified products table before editing items.");
+      return;
+    }
+
+    if (!editingProduct?.id) {
+      toast.error("Missing product to edit");
+      return;
+    }
+
+    if (
+      !newProduct.name ||
+      !newProduct.category ||
+      !newProduct.price ||
+      !newProduct.stock
+    ) {
+      toast.error("Please fill in required fields");
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      let imageUrl: string | null | undefined = undefined;
+      if (newProduct.image) {
+        const uploadedUrl = await uploadImage(newProduct.image);
+        if (!uploadedUrl) {
+          return;
+        }
+        imageUrl = uploadedUrl;
+      }
+
+      const response = await fetch("/api/admin/products", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          id: editingProduct.id,
+          data: {
+            name: newProduct.name,
+            brand: newProduct.brand,
+            category: newProduct.category,
+            type: newProduct.type || "other",
+            description: newProduct.description,
+            price: newProduct.price,
+            stock: newProduct.stock,
+            ...(imageUrl !== undefined ? { image_url: imageUrl } : {}),
+            is_premium: newProduct.is_premium,
+            alcohol_content: newProduct.alcohol_content,
+            volume: newProduct.volume,
+            caffeine: newProduct.caffeine,
+            expiry_date: newProduct.expiry_date,
+            barcode: newProduct.barcode,
+            supplier: newProduct.supplier,
+            cost_price: newProduct.cost_price,
+          },
+        }),
+      });
+
+      let payload: { success?: boolean; error?: string } | null = null;
+      try {
+        payload = await response.json();
+      } catch {}
+
+      if (!response.ok || !payload?.success) {
+        const message = payload?.error || "Failed to update product";
+        console.error("Error updating product:", message);
+        toast.error(message);
+        return;
+      }
+
+      toast.success("Product updated successfully!");
+      await fetchProducts();
+      setIsDialogOpen(false);
+      setEditingProduct(null);
+      setNewProduct(initialFormState);
+      setImagePreview(null);
+    } catch (error) {
+      console.error("Error updating product:", error);
+      toast.error("Failed to update product");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -1826,7 +1944,17 @@ export function UnifiedProductManagement({
             Manage all your products across categories
           </p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <Dialog
+          open={isDialogOpen}
+          onOpenChange={(open) => {
+            setIsDialogOpen(open);
+            if (!open) {
+              setEditingProduct(null);
+              setNewProduct(initialFormState);
+              setImagePreview(null);
+            }
+          }}
+        >
           <DialogTrigger asChild>
             <Button className="gap-2" disabled={legacyMode}>
               <Plus className="h-4 w-4" />
@@ -1835,9 +1963,13 @@ export function UnifiedProductManagement({
           </DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-white">
             <DialogHeader>
-              <DialogTitle>Add New Product</DialogTitle>
+              <DialogTitle>
+                {editingProduct ? "Edit Product" : "Add New Product"}
+              </DialogTitle>
               <DialogDescription>
-                Create a new product in your inventory
+                {editingProduct
+                  ? "Update this product in your inventory"
+                  : "Create a new product in your inventory"}
               </DialogDescription>
             </DialogHeader>
 
@@ -2067,14 +2199,41 @@ export function UnifiedProductManagement({
                 variant="outline"
                 onClick={() => {
                   setIsDialogOpen(false);
+                  setEditingProduct(null);
                   setNewProduct(initialFormState);
                   setImagePreview(null);
                 }}
               >
                 Cancel
               </Button>
-              <Button onClick={handleAddProduct} disabled={isSaving}>
-                {isSaving ? "Adding..." : "Add Product"}
+              {editingProduct && (
+                <Button
+                  variant="destructive"
+                  onClick={() =>
+                    handleDeleteProduct(editingProduct.id, editingProduct.name)
+                      .then(() => {
+                        setIsDialogOpen(false);
+                        setEditingProduct(null);
+                        setNewProduct(initialFormState);
+                        setImagePreview(null);
+                      })
+                      .catch(() => {
+                        // handleDeleteProduct already toasts on failure
+                      })
+                  }
+                  disabled={isSaving}
+                >
+                  Delete
+                </Button>
+              )}
+              <Button onClick={handleSaveProduct} disabled={isSaving}>
+                {isSaving
+                  ? editingProduct
+                    ? "Saving..."
+                    : "Adding..."
+                  : editingProduct
+                  ? "Save Changes"
+                  : "Add Product"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -3206,7 +3365,16 @@ export function UnifiedProductManagement({
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
-                          <Button variant="outline" size="sm">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setEditingProduct(product);
+                              populateProductForm(product);
+                              setIsDialogOpen(true);
+                            }}
+                            disabled={legacyMode}
+                          >
                             <Edit className="h-4 w-4" />
                           </Button>
                           <Button
@@ -3215,6 +3383,8 @@ export function UnifiedProductManagement({
                             onClick={() =>
                               handleDeleteProduct(product.id, product.name)
                             }
+                            disabled={legacyMode}
+                            className="bg-red-500"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>

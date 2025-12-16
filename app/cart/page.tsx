@@ -17,6 +17,13 @@ import type { Product } from "@/lib/types";
 import { Minus, Plus, Trash2, ShoppingBag } from "lucide-react";
 import Link from "next/link";
 import { useUser } from "@/lib/hooks/use-user";
+import { useEffect, useState } from "react";
+import type { Review, WishlistItem } from "@/lib/types";
+import { ProductCardWithReviews } from "@/components/product-card";
+import FavoritesList from "@/components/favorites-list";
+import WishlistButton from "@/components/wishlist-button";
+import ReviewList from "@/components/review-list";
+import ReviewForm from "@/components/review-form";
 
 const CATEGORY_META: Record<string, { label: string; badgeClass: string }> = {
   beer: { label: "Beer", badgeClass: "bg-amber-100 text-amber-800" },
@@ -85,6 +92,9 @@ export default function CartPage() {
     ? 0
     : Math.max(0, shippingThreshold - discountedSubtotal);
 
+  const [openComments, setOpenComments] = useState<Record<string, boolean>>({});
+  const [reviewRefreshKey, setReviewRefreshKey] = useState(0);
+
   if (items.length === 0) {
     return (
       <>
@@ -133,6 +143,12 @@ export default function CartPage() {
         <div className="container py-8">
           <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_360px]">
             <div className="space-y-4">
+              {/* Favorites section */}
+              <div>
+                <h2 className="text-lg font-semibold">Favorites</h2>
+                <FavoritesList />
+              </div>
+
               {items.map((item) => {
                 const product = cartItemToProduct(item);
                 const categoryMeta = getCategoryMeta(product.category);
@@ -152,13 +168,34 @@ export default function CartPage() {
                           />
                         </div>
 
-                        <div className="flex flex-1 flex-col justify-between">
-                          <div>
-                            <h3 className="font-semibold">{product.name}</h3>
-                            <p className="text-sm text-muted-foreground">
+                        <div className="flex flex-1 flex-col justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex items-start justify-between gap-3">
+                              <h3 className="min-w-0 flex-1 font-semibold leading-tight truncate">
+                                {product.name}
+                              </h3>
+                              <div className="shrink-0 flex items-center gap-2 whitespace-nowrap">
+                                <span className="text-base font-bold tabular-nums">
+                                  ${(product.price * item.quantity).toFixed(2)}
+                                </span>
+                                <WishlistButton
+                                  productId={product.id}
+                                  variant="icon"
+                                />
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="text-destructive"
+                                  onClick={() => removeItem(product.id)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </div>
+                            <p className="text-sm text-muted-foreground truncate">
                               {product.brand}
                             </p>
-                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <div className="mt-1 flex flex-wrap items-center gap-2">
                               <Badge
                                 className={`text-xs ${categoryMeta.badgeClass}`}
                               >
@@ -169,7 +206,7 @@ export default function CartPage() {
                               </span>
                             </div>
                             {productDetails.length > 0 && (
-                              <div className="mt-2 flex flex-wrap gap-x-4 text-xs text-muted-foreground">
+                              <div className="mt-1 flex flex-wrap gap-x-4 text-xs text-muted-foreground">
                                 {productDetails.map((detail) => (
                                   <span key={`${product.id}-${detail}`}>
                                     {detail}
@@ -179,7 +216,7 @@ export default function CartPage() {
                             )}
                           </div>
 
-                          <div className="flex items-center justify-between">
+                          <div className="mt-2 flex items-center justify-between">
                             <div className="flex items-center gap-2">
                               <Button
                                 size="icon"
@@ -210,19 +247,46 @@ export default function CartPage() {
                               </Button>
                             </div>
 
-                            <div className="flex items-center gap-4">
-                              <span className="text-lg font-bold">
-                                ${(product.price * item.quantity).toFixed(2)}
+                            <span className="text-xs text-muted-foreground tabular-nums">
+                              Qty:{" "}
+                              <span className="font-medium">
+                                {item.quantity}
                               </span>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="text-destructive"
-                                onClick={() => removeItem(product.id)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
+                            </span>
+                          </div>
+
+                          <div className="mt-3">
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              className="w-full justify-center"
+                              onClick={() =>
+                                setOpenComments((prev) => ({
+                                  ...prev,
+                                  [product.id]: !prev[product.id],
+                                }))
+                              }
+                            >
+                              {openComments[product.id]
+                                ? "Hide comments"
+                                : "Comments"}
+                            </Button>
+
+                            {openComments[product.id] && (
+                              <div className="mt-2 rounded border bg-white p-4 space-y-4">
+                                <ReviewList
+                                  key={`cart-reviews-${product.id}-${reviewRefreshKey}`}
+                                  productId={product.id}
+                                />
+                                <ReviewForm
+                                  productId={product.id}
+                                  onSubmitted={() =>
+                                    setReviewRefreshKey((k) => k + 1)
+                                  }
+                                />
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>

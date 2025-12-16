@@ -33,6 +33,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Edit,
+  Trash2,
   AlertTriangle,
   TrendingUp,
   TrendingDown,
@@ -45,7 +46,7 @@ import {
 import { toast } from "sonner";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
-interface Product {
+export interface Product {
   id: string;
   name: string;
   brand: string;
@@ -159,6 +160,67 @@ export function UnifiedStockManagement({
     setNewPrice(product.price.toString());
     setNewCostPrice(product.cost_price?.toString() || "");
     setIsDialogOpen(true);
+  };
+
+  const handleDialogOpenChange = (open: boolean) => {
+    setIsDialogOpen(open);
+    if (!open) {
+      setEditingProduct(null);
+      setNewStock("");
+      setNewPrice("");
+      setNewCostPrice("");
+    }
+  };
+
+  const handleDeleteProduct = async (
+    productId: string,
+    productName: string
+  ) => {
+    if (legacyMode) {
+      toast.error(
+        "Switch to the unified products table before deleting items."
+      );
+      return;
+    }
+
+    if (
+      !confirm(
+        `Are you sure you want to delete "${productName}"? This action cannot be undone.`
+      )
+    ) {
+      return;
+    }
+
+    // Optimistic UI update: remove immediately.
+    setProducts((prev) => prev.filter((p) => p.id !== productId));
+
+    try {
+      const response = await fetch("/api/admin/products", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ id: productId }),
+      });
+
+      let payload: { success?: boolean; error?: string } | null = null;
+      try {
+        payload = await response.json();
+      } catch {}
+
+      if (!response.ok || !payload?.success) {
+        const message = payload?.error || "Failed to delete product";
+        toast.error(message);
+        await fetchProducts();
+        return;
+      }
+
+      toast.success("Product deleted successfully!");
+      await fetchProducts();
+    } catch (error) {
+      console.error("Error deleting product:", error);
+      toast.error("Failed to delete product");
+      await fetchProducts();
+    }
   };
 
   const handleSave = async () => {
@@ -474,15 +536,28 @@ export function UnifiedStockManagement({
                           ${stockValue.toFixed(2)}
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleEdit(product)}
-                            className="gap-1"
-                          >
-                            <Edit className="h-4 w-4" />
-                            Edit
-                          </Button>
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEdit(product)}
+                              className="gap-1"
+                            >
+                              <Edit className="h-4 w-4" />
+                              Edit
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() =>
+                                handleDeleteProduct(product.id, product.name)
+                              }
+                              className="gap-1 bg-red-50 hover:bg-red-100 text-red-700"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              Delete
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
@@ -503,8 +578,8 @@ export function UnifiedStockManagement({
       </Tabs>
 
       {/* Edit Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent>
+      <Dialog open={isDialogOpen} onOpenChange={handleDialogOpenChange}>
+        <DialogContent className="bg-white">
           <DialogHeader>
             <DialogTitle>Update Stock & Pricing</DialogTitle>
             <DialogDescription>
@@ -512,7 +587,7 @@ export function UnifiedStockManagement({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <div className="space-y-4 ">
             <div className="space-y-2">
               <Label htmlFor="stock">Stock Quantity</Label>
               <Input
@@ -570,7 +645,10 @@ export function UnifiedStockManagement({
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => handleDialogOpenChange(false)}
+            >
               Cancel
             </Button>
             <Button onClick={handleSave} disabled={isSaving}>

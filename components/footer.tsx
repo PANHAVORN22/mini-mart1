@@ -6,7 +6,7 @@ export function Footer() {
       <div className="container py-8 md:py-12">
         <div className="grid grid-cols-1 gap-8 md:grid-cols-4">
           <div className="space-y-3">
-            <h3 className="text-lg font-semibold">E-cornor</h3>
+            <h3 className="text-lg font-semibold">Jmom176</h3>
             <p className="text-sm text-muted-foreground">
               Your local craft beer destination. Quality beers, delivered fresh.
             </p>
@@ -91,7 +91,7 @@ export function Footer() {
         </div>
 
         <div className="mt-8 border-t pt-8 text-center text-sm text-muted-foreground">
-          <p>&copy; 2025 E-cornor. All rights reserved.</p>
+          <p>&copy; 2025 Jmom176. All rights reserved.</p>
         </div>
       </div>
     </footer>

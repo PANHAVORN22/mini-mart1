@@ -92,3 +92,32 @@ export interface PremiumRewardItem {
   created_at: string;
   updated_at: string;
 }
+
+export interface Review {
+  id: string;
+  productId: string;
+  userId: string;
+  rating: number;
+  comment?: string | null;
+  createdAt: string;
+}
+
+export interface WishlistItem {
+  id: string;
+  userId: string;
+  productId: string;
+  createdAt: string;
+}
+
+export interface Discount {
+  id: string;
+  code: string;
+  description?: string | null;
+  percentOff?: number | null;
+  amountOff?: number | null;
+  startsAt?: string | null;
+  expiresAt?: string | null;
+  usageLimit?: number | null;
+  timesUsed?: number | null;
+  active: boolean;
+}

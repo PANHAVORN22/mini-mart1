@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { ShoppingCart, User, LogOut, Crown } from "lucide-react";
+import { ShoppingCart, User, LogOut, Crown, Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCartStore } from "@/lib/cart-store";
 import { useUser } from "@/lib/hooks/use-user";
@@ -26,6 +26,8 @@ export function Header() {
   const itemCount = useCartStore((state) => state.getItemCount());
   const { user, isAuthenticated, refreshUser } = useUser();
   const mounted = useHasMounted();
+
+  const LOGOUT_RELOAD_KEY = "e-mart:logout:reloaded";
 
   const handleLogout = async () => {
     const supabase = getSupabaseBrowserClient();
@@ -61,8 +63,21 @@ export function Header() {
       });
 
       toast.success("You have been logged out");
+      // Force a one-time full reload to clear any client state
+      // that might still reflect the previous session.
+      try {
+        const alreadyReloaded = sessionStorage.getItem(LOGOUT_RELOAD_KEY) === "1";
+        if (!alreadyReloaded) {
+          sessionStorage.setItem(LOGOUT_RELOAD_KEY, "1");
+          window.location.assign("/");
+          return;
+        }
+        sessionStorage.removeItem(LOGOUT_RELOAD_KEY);
+      } catch {
+        // If storage is unavailable, fall back to a normal navigation.
+      }
+
       router.push("/");
-      router.refresh();
     } catch (error) {
       const description =
         error instanceof Error ? error.message : "An unexpected error occurred";
@@ -133,6 +148,12 @@ export function Header() {
                   {itemCount}
                 </Badge>
               )}
+            </Link>
+          </Button>
+
+          <Button asChild variant="ghost" size="icon" className="relative">
+            <Link href="/favorites" aria-label="Favorites">
+              <Heart className="h-5 w-5" />
             </Link>
           </Button>
 

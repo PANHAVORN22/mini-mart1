@@ -10,15 +10,14 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useUser } from "@/lib/hooks/use-user";
 import { UnifiedStockManagement } from "@/components/admin/unified-stock-management";
-import {
-  UnifiedProductManagement,
-  type Product,
-} from "@/components/admin/unified-product-management";
+import type { Product } from "@/components/admin/unified-stock-management";
+import { UnifiedProductManagement } from "@/components/admin/unified-product-management";
 import { SalesOverview } from "@/components/admin/sales-overview";
 import { UserManagement } from "@/components/admin/user-management";
 import { RoleChanges } from "@/components/admin/role-changes";
 import { AdminNotifications } from "@/components/admin/notifications";
 import { RewardRedemptionMonitor } from "@/components/admin/reward-redemptions";
+import AdminDiscountsPage from "@/app/admin/dev-tools/discounts/page";
 import { Package, TrendingUp, Users, DollarSign } from "lucide-react";
 import { toast } from "sonner";
 import type { PremiumEvent, PremiumRewardItem } from "@/lib/types";
@@ -27,6 +26,7 @@ const ADMIN_TABS = [
   "products",
   "stock",
   "sales",
+  "discounts",
   "users",
   "audit",
   "notifications",
@@ -272,10 +272,11 @@ export function AdminPageClient({
             onValueChange={handleTabChange}
             className="space-y-6"
           >
-            <TabsList className="grid w/full max-w-3xl grid-cols-7 mx-auto">
+            <TabsList className="grid w/full max-w-4xl grid-cols-8 mx-auto">
               <TabsTrigger value="products">Products</TabsTrigger>
               <TabsTrigger value="stock">Stock</TabsTrigger>
               <TabsTrigger value="sales">Sales</TabsTrigger>
+              <TabsTrigger value="discounts">Promo Codes</TabsTrigger>
               <TabsTrigger value="users">Users</TabsTrigger>
               <TabsTrigger value="audit">Audit</TabsTrigger>
               <TabsTrigger value="notifications">Notifications</TabsTrigger>
@@ -305,6 +306,18 @@ export function AdminPageClient({
 
             <TabsContent value="sales">
               <SalesOverview />
+            </TabsContent>
+
+            <TabsContent value="discounts">
+              <div className="max-w-2xl mx-auto">
+                <div className="mb-4">
+                  <h2 className="text-xl font-semibold">Promo Codes</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Create discount codes for events (e.g. Christmas 15% off).
+                  </p>
+                </div>
+                <AdminDiscountsPage />
+              </div>
             </TabsContent>
 
             <TabsContent value="users">

@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { MapPin, UserIcon } from "lucide-react";
 import type { CartItem } from "@/lib/types";
 import { PaymentModal } from "@/components/payment-modal";
+import DiscountInput from "@/components/discount-input";
 
 type OrderSnapshot = {
   id: string;
@@ -45,6 +46,17 @@ export default function CheckoutPage() {
   const [showPayment, setShowPayment] = useState(false);
   const [paymentOrderId, setPaymentOrderId] = useState<string | null>(null);
   const [paymentAmount, setPaymentAmount] = useState<number | null>(null);
+  const [orderItemsSnapshot, setOrderItemsSnapshot] = useState<
+    CartItem[] | null
+  >(null);
+  const [orderTotalsSnapshot, setOrderTotalsSnapshot] = useState<{
+    rawSubtotal: number;
+    discount: number;
+    subtotal: number;
+    shipping: number;
+    tax: number;
+    total: number;
+  } | null>(null);
 
   const [formData, setFormData] = useState({
     fullName: user?.name || "",
@@ -56,12 +68,35 @@ export default function CheckoutPage() {
     remarks: "",
   });
 
-  const rawSubtotal = getTotal();
-  const discount = user?.isPremium ? rawSubtotal * 0.15 : 0;
-  const subtotal = Math.max(0, rawSubtotal - discount);
-  const shipping = subtotal > 50 ? 0 : 5.99;
-  const tax = subtotal * 0.1;
-  const total = subtotal + shipping + tax;
+  const rawSubtotal = orderTotalsSnapshot?.rawSubtotal ?? getTotal();
+  const discount =
+    orderTotalsSnapshot?.discount ?? (user?.isPremium ? rawSubtotal * 0.15 : 0);
+  const subtotal =
+    orderTotalsSnapshot?.subtotal ?? Math.max(0, rawSubtotal - discount);
+  const shipping = orderTotalsSnapshot?.shipping ?? (subtotal > 50 ? 0 : 5.99);
+  const tax = orderTotalsSnapshot?.tax ?? subtotal * 0.1;
+  const [appliedDiscount, setAppliedDiscount] = useState<any | null>(null);
+
+  const baseTotal = subtotal + shipping + tax;
+
+  const computedTotal = (() => {
+    if (!appliedDiscount) return baseTotal;
+    if (
+      appliedDiscount.percent_off !== null &&
+      appliedDiscount.percent_off !== undefined
+    ) {
+      return baseTotal * (1 - Number(appliedDiscount.percent_off) / 100);
+    }
+    if (
+      appliedDiscount.amount_off !== null &&
+      appliedDiscount.amount_off !== undefined
+    ) {
+      return Math.max(0, baseTotal - Number(appliedDiscount.amount_off));
+    }
+    return baseTotal;
+  })();
+
+  const total = orderTotalsSnapshot?.total ?? computedTotal;
 
   const persistLocalOrder = (
     orderId: string,
@@ -146,6 +181,7 @@ export default function CheckoutPage() {
           checkoutData: formData,
           userId: user.id,
           total: total, // Include full total with shipping, tax, and discounts
+          discountCode: appliedDiscount?.code ?? null,
         }),
       });
 
@@ -191,10 +227,20 @@ export default function CheckoutPage() {
 
       const confirmedOrderId = result.orderId || `TEMP-${Date.now()}`;
 
-      persistLocalOrder(confirmedOrderId, items, total);
-      clearCart();
+      // Snapshot current checkout details so exiting payment doesn't zero out totals.
+      setOrderItemsSnapshot(items);
+      setOrderTotalsSnapshot({
+        rawSubtotal,
+        discount,
+        subtotal,
+        shipping,
+        tax,
+        total: computedTotal,
+      });
+
+      persistLocalOrder(confirmedOrderId, items, computedTotal);
       setPaymentOrderId(confirmedOrderId);
-      setPaymentAmount(total);
+      setPaymentAmount(computedTotal);
       setShowPayment(true);
       toast.success("Order created", {
         description: "Scan the ABA QR code to complete your payment.",
@@ -225,6 +271,14 @@ export default function CheckoutPage() {
     router.push("/cart");
     return null;
   }
+
+  const handleClosePayment = () => {
+    // Closing/cancelling the payment UI should not change the order amount.
+    // Keep the last `paymentAmount` so the modal always shows the original price.
+    setShowPayment(false);
+  };
+
+  const displayItems = orderItemsSnapshot ?? items;
 
   return (
     <>
@@ -358,7 +412,7 @@ export default function CheckoutPage() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="space-y-3">
-                      {items.map((item) => {
+                      {displayItems.map((item) => {
                         const product = cartItemToProduct(item);
                         return (
                           <div
@@ -385,6 +439,23 @@ export default function CheckoutPage() {
                           <span>- ${discount.toFixed(2)}</span>
                         </div>
                       )}
+                      <div className="py-2">
+                        <DiscountInput
+                          onApplied={(d) => setAppliedDiscount(d)}
+                        />
+                        {appliedDiscount && (
+                          <div className="mt-2 text-sm text-green-600">
+                            Applied: {appliedDiscount.code}{" "}
+                            {appliedDiscount.percent_off
+                              ? `(${appliedDiscount.percent_off}% off)`
+                              : appliedDiscount.amount_off
+                              ? `(-$${Number(
+                                  appliedDiscount.amount_off
+                                ).toFixed(2)})`
+                              : ""}
+                          </div>
+                        )}
+                      </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Subtotal</span>
                         <span>${subtotal.toFixed(2)}</span>
@@ -432,12 +503,18 @@ export default function CheckoutPage() {
       {/* Payment modal with iframe after order creation */}
       <PaymentModal
         isOpen={showPayment}
-        onClose={() => setShowPayment(false)}
+        onClose={handleClosePayment}
         orderId={paymentOrderId}
         amount={paymentAmount ?? total}
         onPaymentComplete={() => {
           toast.success("Payment completed successfully!");
-          router.push(`/order-confirmation?orderId=${paymentOrderId}`);
+          clearCart();
+          setShowPayment(false);
+          setPaymentOrderId(null);
+          setPaymentAmount(null);
+          setOrderItemsSnapshot(null);
+          setOrderTotalsSnapshot(null);
+          router.push("/catalog");
         }}
       />
 

@@ -1,10 +1,15 @@
 "use client";
 
+import React from "react";
 import Image from "next/image";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Crown, ShoppingCart, Lock, Zap, Calendar, Milk } from "lucide-react";
+import WishlistButton from "@/components/wishlist-button";
+import ReviewList from "@/components/review-list";
+import ReviewForm from "@/components/review-form";
+import ProductRating from "@/components/product-rating";
 import type { Product } from "@/lib/types";
 import { useCartStore } from "@/lib/cart-store";
 import { useAuthStore } from "@/lib/auth-store";
@@ -153,7 +158,13 @@ export function ProductCard({ product, compact = false }: ProductCardProps) {
         )}
       </div>
 
-      <CardContent className={compact ? "p-3 space-y-2" : "p-4 space-y-3"}>
+      <CardContent
+        className={
+          compact
+            ? "p-3 space-y-2 flex flex-col h-full"
+            : "p-4 space-y-3 flex flex-col h-full"
+        }
+      >
         <div>
           <h3
             className={
@@ -170,6 +181,12 @@ export function ProductCard({ product, compact = false }: ProductCardProps) {
           <p className="text-xs text-muted-foreground capitalize">
             {product.type}
           </p>
+          <div className={compact ? "mt-1" : "mt-2"}>
+            <ProductRating
+              productId={product.id}
+              size={compact ? "sm" : "md"}
+            />
+          </div>
         </div>
 
         {getProductDetails()}
@@ -180,23 +197,70 @@ export function ProductCard({ product, compact = false }: ProductCardProps) {
           </p>
         )}
 
-        <div className="flex items-center justify-between">
-          <span className="text-lg font-bold">${product.price.toFixed(2)}</span>
-          <Button
-            size={compact ? "sm" : "default"}
-            onClick={handleAddToCart}
-            disabled={!canPurchase || product.stock === 0}
-            className="shrink-0"
-          >
-            {!canPurchase ? (
-              <Lock className="h-4 w-4" />
-            ) : (
-              <ShoppingCart className="h-4 w-4" />
-            )}
-            {compact ? "" : " Add"}
-          </Button>
+        <div className="mt-auto flex items-center justify-between gap-3 pt-2">
+          <span className="text-lg font-bold tabular-nums whitespace-nowrap">
+            ${product.price.toFixed(2)}
+          </span>
+          <div className="flex items-center gap-2 whitespace-nowrap">
+            <WishlistButton
+              productId={product.id}
+              variant={compact ? "icon" : "default"}
+            />
+            <Button
+              size={compact ? "sm" : "default"}
+              onClick={handleAddToCart}
+              disabled={!canPurchase || product.stock === 0}
+              className="shrink-0"
+            >
+              {!canPurchase ? (
+                <Lock className="h-4 w-4" />
+              ) : (
+                <ShoppingCart className="h-4 w-4" />
+              )}
+              {compact ? "" : " Add"}
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// For non-compact product cards, allow toggling reviews via a details block
+export function ProductCardWithReviews(props: ProductCardProps) {
+  const { product, compact } = props;
+
+  const [open, setOpen] = React.useState(false);
+  const [refreshKey, setRefreshKey] = React.useState(0);
+
+  if (compact) return ProductCard(props as any);
+
+  return (
+    <div>
+      <ProductCard product={product} compact={compact} />
+      <div className="mt-2">
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full bg-transparent"
+          onClick={() => setOpen((v) => !v)}
+        >
+          {open ? "Hide comments" : "Comments"}
+        </Button>
+
+        {open && (
+          <div className="mt-2 rounded border bg-white p-4 space-y-4">
+            <ReviewList
+              key={`reviews-${product.id}-${refreshKey}`}
+              productId={product.id}
+            />
+            <ReviewForm
+              productId={product.id}
+              onSubmitted={() => setRefreshKey((k) => k + 1)}
+            />
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
