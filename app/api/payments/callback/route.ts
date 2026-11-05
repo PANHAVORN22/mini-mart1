@@ -58,11 +58,9 @@ export async function POST(req: NextRequest) {
       data.hash || data.signature || data.checksum;
 
     // Validate required fields
-    if (!tranId || status === undefined || !returnParams) {
+    if (!tranId) {
       console.error("Missing required callback fields:", {
         tranId,
-        status,
-        hasReturnParams: !!returnParams,
       });
       return NextResponse.json(
         {
@@ -71,14 +69,6 @@ export async function POST(req: NextRequest) {
             message: "Missing required callback fields",
           },
         },
-        { status: 400 }
-      );
-    }
-
-    // Require a signature; fail closed if absent
-    if (!callbackHash) {
-      return NextResponse.json(
-        { error: { code: "MISSING_SIGNATURE", message: "Signature required" } },
         { status: 400 }
       );
     }
@@ -99,38 +89,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Verify payment status is successful (status "0" means success in PayWay)
-    if (status !== "0") {
-      console.log("Payment failed with status:", status);
-
-      // Update order status to failed
-      await supabase
-        .from("orders")
-        .update({
-          payment_status: "failed",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", mapping.order_id);
-
-      // Create failed payment record if you have a payments table
-      // await supabase.from("payments").insert({
-      //   order_id: transactionMetadata.orderId,
-      //   user_id: transactionMetadata.userId,
-      //   amount: transactionMetadata.amount,
-      //   status: "failed",
-      //   payment_gateway: "payway",
-      //   transaction_id: tranId,
-      //   metadata: {
-      //     status,
-      //     failureReason: "Payment not successful",
-      //   },
-      // });
-
-      return NextResponse.json({
-        message: "Payment not successful",
-        status: "failed",
-      });
-    }
+    // Do not act on client-provided status; rely solely on server-to-server verification.
 
     // Look up the server-side order and trusted total
     const { data: orderRecord, error: orderLookupError } = await supabase
@@ -179,13 +138,23 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    const verifyStatus = String(verifyData?.status ?? "");
-    const paidFlag =
-      String(verifyData?.payment_status ?? verifyData?.data?.payment_status ?? "").toLowerCase();
-    const verifiedAmount =
-      Number(verifyData?.amount ?? verifyData?.data?.amount ?? Number.NaN);
-    const okStatus = verifyStatus === "0" || paidFlag === "approved" || paidFlag === "paid" || paidFlag === "completed";
-    if (!okStatus) {
+    // Parse payment_status strictly per PayWay docs (require APPROVED)
+    const paymentStatusRaw =
+      (verifyData?.payment_status ??
+        verifyData?.data?.payment_status ??
+        verifyData?.transaction?.payment_status ??
+        verifyData?.result?.payment_status ??
+        "") + "";
+    const paymentStatus = paymentStatusRaw.toString().trim().toUpperCase();
+    const verifiedAmount = Number(
+      verifyData?.amount ??
+        verifyData?.data?.amount ??
+        verifyData?.transaction?.amount ??
+        verifyData?.result?.amount ??
+        Number.NaN
+    );
+
+    if (paymentStatus !== "APPROVED") {
       return NextResponse.json(
         { error: { code: "NOT_PAID", message: "Payment not approved" } },
         { status: 400 }
@@ -197,7 +166,10 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    if (Math.abs(Number(orderRecord.total) - verifiedAmount) > 0.01) {
+    if (
+      Math.abs(Number(orderRecord.total) - verifiedAmount) > 0.01 ||
+      Math.abs(Number(mapping.amount) - verifiedAmount) > 0.01
+    ) {
       return NextResponse.json(
         { error: { code: "AMOUNT_MISMATCH", message: "Amount verification failed" } },
         { status: 400 }

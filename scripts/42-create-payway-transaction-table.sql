@@ -16,13 +16,17 @@ CREATE TABLE IF NOT EXISTS public.payment_transactions (
 ALTER TABLE public.payment_transactions ENABLE ROW LEVEL SECURITY;
 
 -- Only admins can read; nobody can write directly except service functions
-CREATE POLICY IF NOT EXISTS "Admins can read payment transactions"
-  ON public.payment_transactions FOR SELECT
+DROP POLICY IF EXISTS "Admins can read payment transactions" ON public.payment_transactions;
+CREATE POLICY "Admins can read payment transactions"
+  ON public.payment_transactions
+  FOR SELECT
   USING (EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'admin'));
 
 -- Allow owners to read only their own transaction status (optional)
-CREATE POLICY IF NOT EXISTS "Users can read their own payment transactions"
-  ON public.payment_transactions FOR SELECT
+DROP POLICY IF EXISTS "Users can read their own payment transactions" ON public.payment_transactions;
+CREATE POLICY "Users can read their own payment transactions"
+  ON public.payment_transactions
+  FOR SELECT
   USING (auth.uid() = user_id);
 
 -- Function-based writes (service role) will manage inserts/updates.

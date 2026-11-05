@@ -65,99 +65,168 @@ END
 $clean$;
 
 -- 4) Users table policies (self-only except admin)
-CREATE POLICY IF NOT EXISTS "Users can view their own profile"
-  ON public.users FOR SELECT USING (auth.uid() = id);
+DROP POLICY IF EXISTS "Users can view their own profile" ON public.users;
+CREATE POLICY "Users can view their own profile"
+  ON public.users
+  FOR SELECT
+  USING (auth.uid() = id);
 
-CREATE POLICY IF NOT EXISTS "Users can update their own profile"
-  ON public.users FOR UPDATE USING (auth.uid() = id);
+DROP POLICY IF EXISTS "Users can update their own profile" ON public.users;
+CREATE POLICY "Users can update their own profile"
+  ON public.users
+  FOR UPDATE
+  USING (auth.uid() = id);
 
-CREATE POLICY IF NOT EXISTS "Admins can view all users"
-  ON public.users FOR SELECT USING (
+DROP POLICY IF EXISTS "Admins can view all users" ON public.users;
+CREATE POLICY "Admins can view all users"
+  ON public.users
+  FOR SELECT
+  USING (
     EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'admin')
   );
 
-CREATE POLICY IF NOT EXISTS "Admins can update all users"
-  ON public.users FOR UPDATE USING (
+DROP POLICY IF EXISTS "Admins can update all users" ON public.users;
+CREATE POLICY "Admins can update all users"
+  ON public.users
+  FOR UPDATE
+  USING (
     EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'admin')
   );
 
 -- 5) Beers + Products: public read, admin write
-CREATE POLICY IF NOT EXISTS "Anyone can view beers"
-  ON public.beers FOR SELECT USING (true);
-CREATE POLICY IF NOT EXISTS "Admins can insert beers"
-  ON public.beers FOR INSERT WITH CHECK (
+DROP POLICY IF EXISTS "Anyone can view beers" ON public.beers;
+CREATE POLICY "Anyone can view beers"
+  ON public.beers
+  FOR SELECT
+  USING (true);
+DROP POLICY IF EXISTS "Admins can insert beers" ON public.beers;
+CREATE POLICY "Admins can insert beers"
+  ON public.beers
+  FOR INSERT
+  WITH CHECK (
     EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'admin')
   );
-CREATE POLICY IF NOT EXISTS "Admins can update beers"
-  ON public.beers FOR UPDATE USING (
+DROP POLICY IF EXISTS "Admins can update beers" ON public.beers;
+CREATE POLICY "Admins can update beers"
+  ON public.beers
+  FOR UPDATE
+  USING (
     EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'admin')
   );
-CREATE POLICY IF NOT EXISTS "Admins can delete beers"
-  ON public.beers FOR DELETE USING (
+DROP POLICY IF EXISTS "Admins can delete beers" ON public.beers;
+CREATE POLICY "Admins can delete beers"
+  ON public.beers
+  FOR DELETE
+  USING (
     EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'admin')
   );
 
-CREATE POLICY IF NOT EXISTS "Anyone can view products"
-  ON public.products FOR SELECT USING (true);
-CREATE POLICY IF NOT EXISTS "Admins can insert products"
-  ON public.products FOR INSERT WITH CHECK (
+DROP POLICY IF EXISTS "Anyone can view products" ON public.products;
+CREATE POLICY "Anyone can view products"
+  ON public.products
+  FOR SELECT
+  USING (true);
+DROP POLICY IF EXISTS "Admins can insert products" ON public.products;
+CREATE POLICY "Admins can insert products"
+  ON public.products
+  FOR INSERT
+  WITH CHECK (
     EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'admin')
   );
-CREATE POLICY IF NOT EXISTS "Admins can update products"
-  ON public.products FOR UPDATE USING (
+DROP POLICY IF EXISTS "Admins can update products" ON public.products;
+CREATE POLICY "Admins can update products"
+  ON public.products
+  FOR UPDATE
+  USING (
     EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'admin')
   );
-CREATE POLICY IF NOT EXISTS "Admins can delete products"
-  ON public.products FOR DELETE USING (
+DROP POLICY IF EXISTS "Admins can delete products" ON public.products;
+CREATE POLICY "Admins can delete products"
+  ON public.products
+  FOR DELETE
+  USING (
     EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'admin')
   );
 
 -- 6) Orders and order_items: user-owned visibility + admin access
-CREATE POLICY IF NOT EXISTS "Users can view their own orders"
-  ON public.orders FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY IF NOT EXISTS "Users can create their own orders"
-  ON public.orders FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY IF NOT EXISTS "Admins can view all orders"
-  ON public.orders FOR SELECT USING (
+DROP POLICY IF EXISTS "Users can view their own orders" ON public.orders;
+CREATE POLICY "Users can view their own orders"
+  ON public.orders
+  FOR SELECT
+  USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can create their own orders" ON public.orders;
+CREATE POLICY "Users can create their own orders"
+  ON public.orders
+  FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Admins can view all orders" ON public.orders;
+CREATE POLICY "Admins can view all orders"
+  ON public.orders
+  FOR SELECT
+  USING (
     EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'admin')
   );
-CREATE POLICY IF NOT EXISTS "Admins can update all orders"
-  ON public.orders FOR UPDATE USING (
+DROP POLICY IF EXISTS "Admins can update all orders" ON public.orders;
+CREATE POLICY "Admins can update all orders"
+  ON public.orders
+  FOR UPDATE
+  USING (
     EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'admin')
   );
 
-CREATE POLICY IF NOT EXISTS "Users can view their own order items"
-  ON public.order_items FOR SELECT USING (
+DROP POLICY IF EXISTS "Users can view their own order items" ON public.order_items;
+CREATE POLICY "Users can view their own order items"
+  ON public.order_items
+  FOR SELECT
+  USING (
     EXISTS (
       SELECT 1 FROM public.orders
       WHERE orders.id = order_items.order_id
         AND orders.user_id = auth.uid()
     )
   );
-CREATE POLICY IF NOT EXISTS "Users can create order items for their orders"
-  ON public.order_items FOR INSERT WITH CHECK (
+DROP POLICY IF EXISTS "Users can create order items for their orders" ON public.order_items;
+CREATE POLICY "Users can create order items for their orders"
+  ON public.order_items
+  FOR INSERT
+  WITH CHECK (
     EXISTS (
       SELECT 1 FROM public.orders
       WHERE orders.id = order_items.order_id
         AND orders.user_id = auth.uid()
     )
   );
-CREATE POLICY IF NOT EXISTS "Admins can view all order items"
-  ON public.order_items FOR SELECT USING (
+DROP POLICY IF EXISTS "Admins can view all order items" ON public.order_items;
+CREATE POLICY "Admins can view all order items"
+  ON public.order_items
+  FOR SELECT
+  USING (
     EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'admin')
   );
 
 -- 7) Subscriptions: user-owned visibility + admin access
-CREATE POLICY IF NOT EXISTS "Users can view their own subscriptions"
-  ON public.subscriptions FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY IF NOT EXISTS "Users can create their own subscriptions"
-  ON public.subscriptions FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY IF NOT EXISTS "Admins can view all subscriptions"
-  ON public.subscriptions FOR SELECT USING (
+DROP POLICY IF EXISTS "Users can view their own subscriptions" ON public.subscriptions;
+CREATE POLICY "Users can view their own subscriptions"
+  ON public.subscriptions
+  FOR SELECT
+  USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can create their own subscriptions" ON public.subscriptions;
+CREATE POLICY "Users can create their own subscriptions"
+  ON public.subscriptions
+  FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Admins can view all subscriptions" ON public.subscriptions;
+CREATE POLICY "Admins can view all subscriptions"
+  ON public.subscriptions
+  FOR SELECT
+  USING (
     EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'admin')
   );
-CREATE POLICY IF NOT EXISTS "Admins can update all subscriptions"
-  ON public.subscriptions FOR UPDATE USING (
+DROP POLICY IF EXISTS "Admins can update all subscriptions" ON public.subscriptions;
+CREATE POLICY "Admins can update all subscriptions"
+  ON public.subscriptions
+  FOR UPDATE
+  USING (
     EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'admin')
   );
 
