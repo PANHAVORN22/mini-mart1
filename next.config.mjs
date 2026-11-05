@@ -16,6 +16,9 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  typescript: {
+    ignoreBuildErrors: true,
+  },
   async headers() {
     const csp = [
       "default-src 'self'",

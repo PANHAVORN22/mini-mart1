@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { getSalesSummary } from "@/lib/actions/admin";
+import { getAdminStats } from "@/lib/actions/admin";
 import { getSupabaseServiceRoleClient } from "@/lib/supabase/service";
 
 export async function GET() {
@@ -32,7 +32,7 @@ export async function GET() {
       );
     }
 
-    const summary = await getSalesSummary();
+    const summary = await getAdminStats();
     return NextResponse.json({ success: true, data: summary });
   } catch (error) {
     console.error("Failed to fetch sales overview:", error);
