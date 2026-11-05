@@ -8,10 +8,6 @@ function serializeCookies(
 }
 
 export async function middleware(request: NextRequest) {
-  if (request.nextUrl.pathname.startsWith("/api/")) {
-    return NextResponse.next();
-  }
-
   const requestHeaders = new Headers(request.headers);
   let supabaseResponse = NextResponse.next({
     request: { headers: requestHeaders },
@@ -54,27 +50,18 @@ export async function middleware(request: NextRequest) {
 
   // Protect admin routes using role from users table
   if (request.nextUrl.pathname.startsWith("/admin")) {
-    // Instead of redirecting in middleware, just log attempts.
-    // The client-side page will present a friendly message and server-side
-    // actions already enforce admin-only permission checks.
     if (!user) {
-      console.info(
-        `Unauthenticated request to /admin (path: ${request.nextUrl.pathname})`
-      );
-      // allow the request to continue so the client can render the login prompt
-    } else {
-      const { data: profile } = await supabase
-        .from("users")
-        .select("role")
-        .eq("id", user.id)
-        .single();
-
-      if (profile?.role !== "admin") {
-        console.info(
-          `Unauthorized request to /admin by user ${user.id} (role: ${profile?.role})`
-        );
-        // allow the request to continue so the client can render an access denied message
-      }
+      const url = new URL("/login", request.url);
+      url.searchParams.set("redirect", request.nextUrl.pathname);
+      return NextResponse.redirect(url);
+    }
+    const { data: profile } = await supabase
+      .from("users")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+    if (profile?.role !== "admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
   }
 

@@ -4,21 +4,33 @@ import {
   validateDiscount,
   incrementDiscountUsage,
 } from "@/lib/actions/discounts";
+import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { items, checkoutData, userId, total } = body;
+    const { items, checkoutData } = body;
     const { discountCode } = body;
 
-    if (!items || !checkoutData || !userId) {
+    // Derive userId from authenticated session, never from client input
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: "Authentication required" },
+        { status: 401 }
+      );
+    }
+
+    if (!items || !checkoutData) {
       return NextResponse.json(
         { success: false, error: "Missing required fields" },
         { status: 400 }
       );
     }
 
-    let adjustedTotal = total;
     let appliedDiscount: any = null;
 
     if (discountCode) {
@@ -31,34 +43,44 @@ export async function POST(req: Request) {
       }
 
       appliedDiscount = check.discount;
-
-      // Apply percentage or fixed amount
-      if (
-        appliedDiscount.percent_off !== null &&
-        appliedDiscount.percent_off !== undefined
-      ) {
-        adjustedTotal =
-          Number(total) * (1 - Number(appliedDiscount.percent_off) / 100);
-      } else if (
-        appliedDiscount.amount_off !== null &&
-        appliedDiscount.amount_off !== undefined
-      ) {
-        adjustedTotal = Math.max(
-          0,
-          Number(total) - Number(appliedDiscount.amount_off)
-        );
-      }
     }
 
-    const result = await createOrder(
-      items,
-      checkoutData,
-      userId,
-      adjustedTotal
-    );
+    const result = await createOrder(items, checkoutData, user.id);
 
     // If order created successfully and discount applied, increment usage
     if (result.success && appliedDiscount) {
+      try {
+        // Fetch authoritative total and apply discount on the server
+        const { data: orderRow } = await supabase
+          .from("orders")
+          .select("id,total")
+          .eq("id", result.orderId)
+          .single();
+        if (orderRow) {
+          let newTotal = Number(orderRow.total);
+          if (
+            appliedDiscount.percent_off !== null &&
+            appliedDiscount.percent_off !== undefined
+          ) {
+            newTotal =
+              newTotal * (1 - Number(appliedDiscount.percent_off) / 100);
+          } else if (
+            appliedDiscount.amount_off !== null &&
+            appliedDiscount.amount_off !== undefined
+          ) {
+            newTotal = Math.max(
+              0,
+              newTotal - Number(appliedDiscount.amount_off)
+            );
+          }
+          await supabase
+            .from("orders")
+            .update({ total: newTotal })
+            .eq("id", result.orderId);
+        }
+      } catch (e) {
+        console.error("Failed to apply discount to order:", e);
+      }
       try {
         await incrementDiscountUsage(appliedDiscount.id);
       } catch (e) {

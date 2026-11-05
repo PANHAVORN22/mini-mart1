@@ -5,7 +5,7 @@ import { adjustPremiumPointsForAdmin } from "@/lib/actions/admin";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const authHeader = request.headers.get("authorization");
   const accessToken = authHeader?.startsWith("Bearer ")
     ? authHeader.slice("Bearer ".length)

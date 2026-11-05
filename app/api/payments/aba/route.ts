@@ -76,11 +76,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log("Order data:", {
-      id: orderData.id,
-      total: orderData.total,
-      totalType: typeof orderData.total,
-    });
+    // Do not log full order or PII in production
 
     // Validate order has a valid total
     if (!orderData.total || orderData.total <= 0) {
@@ -112,6 +108,24 @@ export async function POST(request: NextRequest) {
     const amount = orderData.total.toString();
     const currency = "USD";
 
+    // Persist a server-side mapping from PayWay tran_id to our order
+    try {
+      await supabase.from("payment_transactions").insert({
+        tran_id,
+        order_id: orderData.id,
+        user_id: user.id,
+        amount: orderData.total,
+        currency,
+        status: "initiated",
+      });
+    } catch (mapErr) {
+      console.error("Failed to record payment transaction mapping:", mapErr);
+      return NextResponse.json(
+        { error: { code: "PAYMENT_INIT_ERROR", message: "Unable to start payment" } },
+        { status: 500 }
+      );
+    }
+
     // Encode items as base64 JSON string
     const items = encodePaywayData([
       {
@@ -130,6 +144,7 @@ export async function POST(request: NextRequest) {
 
     // Store transaction metadata in return_params
     const return_params = JSON.stringify({
+      // No longer used for trust; mapping is persisted server-side
       orderId: orderData.id,
       userId: user.id,
       amount: orderData.total,

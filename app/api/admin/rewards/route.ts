@@ -42,8 +42,6 @@ export async function POST(req: Request) {
     }
 
     if (!profile) {
-      const inferredRole =
-        (user.user_metadata as any)?.role === "admin" ? "admin" : "customer";
       const inferredName =
         (user.user_metadata as any)?.full_name ||
         user.user_metadata?.full_name ||
@@ -55,7 +53,8 @@ export async function POST(req: Request) {
           id: user.id,
           email: user.email,
           full_name: inferredName,
-          role: inferredRole,
+          // Never trust user_metadata for authorization; default to 'customer'
+          role: "customer",
         })
         .select("id, role, email, full_name")
         .maybeSingle();

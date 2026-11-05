@@ -5,8 +5,6 @@ import { persist } from "zustand/middleware";
 import type { User } from "./types";
 import { mockUser, mockAdminUser } from "./mock-data";
 
-const ADMIN_CODE = "ADMIN2024";
-
 interface AuthStore {
   user: User | null;
   isAuthenticated: boolean;
@@ -15,8 +13,8 @@ interface AuthStore {
     name: string,
     email: string,
     password: string,
-    isAdmin: boolean,
-    adminCode?: string
+    _isAdmin: boolean,
+    _adminCode?: string
   ) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   togglePremium: () => void;
@@ -47,8 +45,8 @@ export const useAuthStore = create<AuthStore>()(
         name: string,
         email: string,
         password: string,
-        isAdmin: boolean,
-        adminCode?: string
+        _isAdmin: boolean,
+        _adminCode?: string
       ) => {
         // Mock registration delay
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -61,19 +59,13 @@ export const useAuthStore = create<AuthStore>()(
           return { success: false, error: "Email already exists" };
         }
 
-        // Validate admin code if registering as admin
-        if (isAdmin) {
-          if (!adminCode || adminCode !== ADMIN_CODE) {
-            return { success: false, error: "Invalid admin code" };
-          }
-        }
-
         // Create new user
         const newUser: User = {
           id: Math.random().toString(36).substr(2, 9),
           name,
           email,
-          role: isAdmin ? "admin" : "customer",
+          // Always default to customer in the mock store
+          role: "customer",
           isPremium: false,
           createdAt: new Date().toISOString(),
         };

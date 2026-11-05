@@ -23,16 +23,12 @@ import { ShieldCheck, Mail } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
-const ADMIN_CODE = "ADMIN2024";
-
 export default function RegisterPage() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [adminCode, setAdminCode] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [showConfirmationMessage, setShowConfirmationMessage] = useState(false);
 
@@ -53,12 +49,6 @@ export default function RegisterPage() {
       return;
     }
 
-    if (isAdmin && adminCode !== ADMIN_CODE) {
-      toast.error("Invalid admin code");
-      setIsLoading(false);
-      return;
-    }
-
     try {
       const supabase = getSupabaseBrowserClient();
 
@@ -71,7 +61,8 @@ export default function RegisterPage() {
             `${window.location.origin}/dashboard`,
           data: {
             full_name: name,
-            role: isAdmin ? "admin" : "customer",
+            // Always default to customer; admin roles are provisioned out-of-band
+            role: "customer",
           },
         },
       });
@@ -201,48 +192,6 @@ export default function RegisterPage() {
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
                 />
-              </div>
-
-              <div className="flex items-center space-x-2 rounded-lg border p-4">
-                <Checkbox
-                  id="admin"
-                  checked={isAdmin}
-                  onCheckedChange={(checked) => setIsAdmin(checked === true)}
-                />
-                <div className="flex-1">
-                  <label
-                    htmlFor="admin"
-                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 flex items-center gap-2"
-                  >
-                    <ShieldCheck className="h-4 w-4" />
-                    Register as Admin
-                  </label>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Requires admin access code
-                  </p>
-                </div>
-              </div>
-
-              {isAdmin && (
-                <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
-                  <Label htmlFor="adminCode">Admin Access Code</Label>
-                  <Input
-                    id="adminCode"
-                    type="password"
-                    placeholder="Enter admin code"
-                    value={adminCode}
-                    onChange={(e) => setAdminCode(e.target.value)}
-                    required={isAdmin}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Contact your administrator to get the admin access code
-                  </p>
-                </div>
-              )}
-
-              <div className="rounded-lg bg-muted p-4 text-sm">
-                <p className="font-medium mb-1">Demo Admin Code:</p>
-                <p className="text-muted-foreground font-mono">ADMIN2024</p>
               </div>
             </CardContent>
             <CardFooter className="flex-col gap-4">

@@ -48,35 +48,16 @@ export async function incrementDiscountUsage(id: string) {
   try {
     // Use service role client to safely increment usage counter server-side
     const service = getSupabaseServiceRoleClient();
-
-    // Fetch current row to avoid race conditions in environments without DB functions
-    const { data: current, error: fetchErr } = await service
-      .from("discounts")
-      .select("times_used")
-      .eq("id", id)
-      .limit(1)
-      .single();
-
-    if (fetchErr) {
-      console.error("incrementDiscountUsage fetch error:", fetchErr);
-      return { success: false, error: fetchErr.message };
+    // Use RPC to perform an atomic guarded increment on the server
+    const { data, error } = await service.rpc(
+      "secure_increment_discount_usage",
+      { p_discount_id: id }
+    );
+    if (error) {
+      console.error("incrementDiscountUsage rpc error:", error);
+      return { success: false, error: error.message };
     }
-
-    const newCount = (current?.times_used || 0) + 1;
-
-    const { data: updated, error: updateErr } = await service
-      .from("discounts")
-      .update({ times_used: newCount })
-      .eq("id", id)
-      .select()
-      .single();
-
-    if (updateErr) {
-      console.error("incrementDiscountUsage update error:", updateErr);
-      return { success: false, error: updateErr.message };
-    }
-
-    return { success: true, discount: updated };
+    return { success: true, discount: data };
   } catch (err) {
     console.error("incrementDiscountUsage exception:", err);
     return { success: false, error: "Unexpected error" };
