@@ -23,8 +23,7 @@ interface CheckoutData {
 export async function createOrder(
   items: OrderItem[],
   checkoutData: CheckoutData,
-  userId: string,
-  totalAmount?: number
+  userId: string
 ) {
   const supabase = await getSupabaseServerClient();
   // Prefer calling a DB-side function that performs the entire create-order
@@ -74,22 +73,17 @@ export async function createOrder(
 
     const orderId = row.order_id;
 
-    // Update the order total if provided (includes shipping, tax, discounts)
-    if (totalAmount && totalAmount > 0) {
-      await supabase
-        .from("orders")
-        .update({ total: totalAmount })
-        .eq("id", orderId);
-    }
-
     // Ensure admins always get a notification for fresh orders. The DB RPC
     // already attempts to insert one, but this fallback covers older
     // migrations or partial setups where the notifications table was missing
     // and prevents duplicate inserts.
-    const calculatedTotal = totalAmount || items.reduce(
-      (sum, item) => sum + item.price * item.quantity,
-      0
-    );
+    // Load the authoritative server-computed total from the database
+    const { data: orderRow } = await supabase
+      .from("orders")
+      .select("total")
+      .eq("id", orderId)
+      .single();
+    const calculatedTotal = Number(orderRow?.total ?? 0);
 
     const pointsEarned = Math.floor(calculatedTotal);
 
@@ -258,7 +252,12 @@ export async function getUserOrders(userId: string) {
 export async function getOrderById(orderId: string) {
   const supabase = await getSupabaseServerClient();
 
-  const { data: order, error } = await supabase
+  // Scope to the current user by default; admins may read any order
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  let query = supabase
     .from("orders")
     .select(
       `
@@ -269,8 +268,20 @@ export async function getOrderById(orderId: string) {
       )
     `
     )
-    .eq("id", orderId)
-    .single();
+    .eq("id", orderId);
+
+  if (user) {
+    const { data: profile } = await supabase
+      .from("users")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (!profile || profile.role !== "admin") {
+      query = query.eq("user_id", user.id);
+    }
+  }
+
+  const { data: order, error } = await query.single();
 
   if (error || !order) {
     return null;

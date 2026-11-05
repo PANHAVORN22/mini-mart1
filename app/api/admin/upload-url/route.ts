@@ -115,8 +115,6 @@ export async function POST(req: Request) {
         "No profile found for user, creating one via admin client:",
         caller.id
       );
-      const inferredRole =
-        (caller.user_metadata as any)?.role === "admin" ? "admin" : "customer";
       const inferredName =
         (caller.user_metadata as any)?.full_name ||
         caller.user_metadata?.full_name ||
@@ -127,7 +125,8 @@ export async function POST(req: Request) {
           id: caller.id,
           email: caller.email,
           full_name: inferredName,
-          role: inferredRole,
+          // Never trust user_metadata for authorization; default to 'customer'
+          role: "customer",
         })
         .select("role, full_name, email")
         .maybeSingle();

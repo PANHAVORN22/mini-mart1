@@ -828,9 +828,14 @@ export async function adjustPremiumPointsForAdmin(
 }
 
 export async function getAllOrders() {
-  const supabase = await getSupabaseServerClient();
+  // Enforce admin explicitly
+  const context = await resolveAdminAccess();
+  if ("error" in context) {
+    return [];
+  }
+  const { service } = context;
 
-  const { data: orders, error } = await supabase
+  const { data: orders, error } = await service
     .from("orders")
     .select(
       `
@@ -910,9 +915,13 @@ export async function updateBeerStock(
 }
 
 export async function getAllUsers() {
-  const supabase = await getSupabaseServerClient();
+  const context = await resolveAdminAccess();
+  if ("error" in context) {
+    return [];
+  }
+  const { service } = context;
 
-  const { data: users, error } = await supabase
+  const { data: users, error } = await service
     .from("users")
     .select("*")
     .order("created_at", { ascending: false });
@@ -1179,7 +1188,16 @@ export async function deleteBeer(beerId: string) {
 
 export async function getAdminStats() {
   try {
-    const supabase = await getSupabaseServerClient();
+    const context = await resolveAdminAccess();
+    if ("error" in context) {
+      return {
+        totalStock: 0,
+        totalRevenue: 0,
+        orderCount: 0,
+        userCount: 0,
+      };
+    }
+    const { service: supabase } = context;
 
     // Get total stock
     // Prefer unified `beers` table, but fall back to `products` if `beers`

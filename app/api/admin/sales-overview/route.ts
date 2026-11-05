@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { getSalesSummary } from "@/lib/actions/admin";
+import { getSupabaseServiceRoleClient } from "@/lib/supabase/service";
 
 export async function GET() {
   try {
@@ -16,8 +17,15 @@ export async function GET() {
       );
     }
 
-    const role = (user.user_metadata?.role as string | undefined) ?? "customer";
-    if (role !== "admin") {
+    // Verify admin role using the database profile, never user_metadata
+    const service = getSupabaseServiceRoleClient();
+    const { data: profile, error: profileError } = await service
+      .from("users")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (profileError || !profile || profile.role !== "admin") {
       return NextResponse.json(
         { success: false, error: "Forbidden" },
         { status: 403 }

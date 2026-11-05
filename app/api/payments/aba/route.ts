@@ -76,11 +76,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log("Order data:", {
-      id: orderData.id,
-      total: orderData.total,
-      totalType: typeof orderData.total,
-    });
+    // Do not log full order or PII in production
 
     // Validate order has a valid total
     if (!orderData.total || orderData.total <= 0) {

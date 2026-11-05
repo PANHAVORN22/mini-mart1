@@ -3,11 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 
-const ADMIN_CODE = "ADMIN2024";
-
 export async function login(email: string, password: string) {
   try {
-    console.log(" Login attempt for:", email);
+    // Avoid logging PII like email addresses
+    console.log("Login attempt");
 
     const supabase = await getSupabaseServerClient();
 
@@ -17,15 +16,15 @@ export async function login(email: string, password: string) {
     });
 
     if (error) {
-      console.log(" Login error:", error.message);
+      console.log("Login error");
       return { success: false, error: error.message };
     }
 
-    console.log(" Login successful for:", data.user?.email);
+    console.log("Login successful");
     revalidatePath("/", "layout");
     return { success: true, user: data.user };
   } catch (error) {
-    console.error(" Login exception:", error);
+    console.error("Login exception:", error);
     return {
       success: false,
       error: "An unexpected error occurred during login",
@@ -37,33 +36,20 @@ export async function signup(
   name: string,
   email: string,
   password: string,
-  isAdmin: boolean,
-  adminCode?: string
+  _isAdmin: boolean,
+  _adminCode?: string
 ) {
   try {
-    console.log(" Signup function called with:", {
-      email,
-      isAdmin,
-      hasAdminCode: !!adminCode,
-    });
-
-    if (isAdmin && adminCode !== ADMIN_CODE) {
-      console.log(" Invalid admin code provided");
-      return { success: false, error: "Invalid admin code" };
-    }
-
-    console.log(" Getting Supabase client...");
     const supabase = await getSupabaseServerClient();
-    console.log(" Supabase client obtained");
 
-    console.log(" Calling supabase.auth.signUp...");
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: {
           full_name: name,
-          role: isAdmin ? "admin" : "customer",
+          // Always default to customer; admin roles are provisioned out-of-band
+          role: "customer",
         },
         emailRedirectTo:
           process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ||
@@ -72,15 +58,9 @@ export async function signup(
     });
 
     if (error) {
-      console.log(" Signup error:", error.message);
+      console.log("Signup error");
       return { success: false, error: error.message };
     }
-
-    console.log(" Signup successful:", {
-      email: data.user?.email,
-      confirmed: data.user?.email_confirmed_at,
-      identities: data.user?.identities?.length,
-    });
 
     const needsConfirmation =
       !data.user?.email_confirmed_at && data.user?.identities?.length === 0;
@@ -92,7 +72,7 @@ export async function signup(
       needsConfirmation,
     };
   } catch (error) {
-    console.error(" Signup exception:", error);
+    console.error("Signup exception:", error);
     return {
       success: false,
       error:
@@ -107,8 +87,8 @@ export async function logout() {
   const supabase = await getSupabaseServerClient();
   const { error } = await supabase.auth.signOut({ scope: "global" });
 
-  if (error && error.message !== "Not authenticated" && error.status !== 401) {
-    console.error(" Logout error:", error.message);
+  if (error && error.message !== "Not authenticated" && (error as any).status !== 401) {
+    console.error("Logout error:", error.message);
     return { success: false, error: error.message };
   }
 
